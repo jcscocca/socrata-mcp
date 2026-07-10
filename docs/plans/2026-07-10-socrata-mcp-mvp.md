@@ -85,45 +85,45 @@ socrata-mcp/
 
 Each task is TDD: write failing tests → run (expect fail) → implement → run (expect pass) → commit.
 
-- [ ] **Task 1: Scaffolding** — pyproject (name `socrata-mcp`, package `socrata_mcp`,
+- [x] **Task 1: Scaffolding** — pyproject (name `socrata-mcp`, package `socrata_mcp`,
   `requires-python >=3.11`, deps `mcp>=1.2`, `httpx>=0.27`; `[project.optional-dependencies] dev = pytest`),
   MIT LICENSE, .gitignore (venv, __pycache__, .pytest_cache, *.egg-info, out/), README stub,
   package skeleton with `__init__.py`s, `.mcp.json.example`, venv + editable install.
   Commit: `chore: scaffold socrata-mcp package`.
-- [ ] **Task 2: errors + config + cache** — tests: TTL expiry (monkeypatched time), key
+- [x] **Task 2: errors + config + cache** — tests: TTL expiry (monkeypatched time), key
   stability/canonicalization, kind separation, corrupt file treated as miss.
   Commit: `feat: config, errors, disk cache with TTL`.
-- [ ] **Task 3: http_client** — tests via MockTransport: app token header sent; 429 then 200
+- [x] **Task 3: http_client** — tests via MockTransport: app token header sent; 429 then 200
   retries (Retry-After honored, sleep monkeypatched); 400 with portal JSON body raises
   PortalError carrying portal message; throttle enforces min interval (fake clock).
   Commit: `feat: throttled, retrying HTTP client with portal error surfacing`.
-- [ ] **Task 4: soql** — tests: structured params → expected `$`-params; quoting/escaping;
+- [x] **Task 4: soql** — tests: structured params → expected `$`-params; quoting/escaping;
   within_circle/within_box rendering and AND-merge with where; raw soql + structured →
   ValidationError; raw LIMIT > cap → error; raw without LIMIT gets capped LIMIT appended;
   semicolon rejection; limit clamping; default order `:id`.
   Commit: `feat: SoQL builder with validation and geo filters`.
-- [ ] **Task 5: provider base + SocrataProvider search/metadata/query** — FakePortal fixture;
+- [x] **Task 5: provider base + SocrataProvider search/metadata/query** — FakePortal fixture;
   tests: Discovery API param mapping + result shaping; views metadata → DatasetInfo (columns
   w/ types, row count via count(*), license, update cadence fields); query pagination across
   3 pages; truncated flag; portal error propagation.
   Commit: `feat: Socrata provider — discovery search, metadata, paged query`.
-- [ ] **Task 6: profile** — FakePortal aggregate routing; tests: null rates, distinct counts,
+- [x] **Task 6: profile** — FakePortal aggregate routing; tests: null rates, distinct counts,
   min/max for date/number cols, top values for low-cardinality text only, system columns
   skipped, chunk-failure → per-column fallback.
   Commit: `feat: server-side dataset profiling via aggregate SoQL`.
-- [ ] **Task 7: sample + export_csv** — tests: sample caps n; export writes stable header from
+- [x] **Task 7: sample + export_csv** — tests: sample caps n; export writes stable header from
   metadata, streams multiple pages, serializes point dicts as JSON, truncation at max_export_rows,
   parent dirs created. Commit: `feat: sample and streamed CSV export`.
-- [ ] **Task 8: MCP layer** — app.py singleton + logging wrapper; tools.py registering
+- [x] **Task 8: MCP layer** — app.py singleton + logging wrapper; tools.py registering
   search_datasets/get_dataset/query/profile_dataset/sample/export_csv; server.py main() +
   `__main__.py`; tests call tools through FastMCP in-process (list_tools + call_tool over
   the mocked provider). Commit: `feat: MCP server surface (FastMCP, stdio)`.
-- [ ] **Task 9: README + smoke tests** — README (what/why, install, .mcp.json, tool table,
+- [x] **Task 9: README + smoke tests** — README (what/why, install, .mcp.json, tool table,
   env vars, cache layout, vizforge chaining example); `test_live_smoke.py` marked
   `@pytest.mark.network` (excluded by default via `-m "not network"` in addopts): search
   data.seattle.gov, get_dataset tazs-3rd5, profile it, query last 30 days, export CSV.
   Commit: `docs: README; test: live smoke suite`.
-- [ ] **Task 10: Live verification** — run network suite for real; also drive the six tools
+- [x] **Task 10: Live verification** — run network suite for real; also drive the six tools
   end-to-end via an in-process MCP client against the live portal; fix whatever reality
   disagrees with (SoQL quirks, Discovery shapes); final commit.
 
