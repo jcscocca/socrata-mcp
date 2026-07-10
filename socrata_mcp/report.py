@@ -108,6 +108,7 @@ def find_landmines(
                     "detail": "one distinct value per row",
                 }
             )
+            continue  # variant collisions on identifiers are noise
         seen: dict[str, str] = {}
         for entry in col.get("top_values") or []:
             value = entry.get("value")
@@ -125,6 +126,7 @@ def find_landmines(
                         ),
                     }
                 )
+                break  # one flag per column
             seen.setdefault(key, value)
     return flags
 

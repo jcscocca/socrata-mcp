@@ -107,6 +107,24 @@ class TestFindLandmines:
         assert [f["flag"] for f in flags] == ["case_variants"]
         assert "'N'" in flags[0]["detail"] and "'n'" in flags[0]["detail"]
 
+    def test_case_variants_single_flag_per_column(self):
+        top = [
+            {"value": "N", "count": 900},
+            {"value": "n", "count": 10},
+            {"value": " N", "count": 5},
+        ]
+        flags = find_landmines(
+            [col("a", null_rate=0.0, distinct_count=3, top_values=top)], 1000
+        )
+        assert [f["flag"] for f in flags] == ["case_variants"]
+
+    def test_id_like_columns_skip_case_variant_scan(self):
+        top = [{"value": "A", "count": 900}, {"value": "a", "count": 100}]
+        flags = find_landmines(
+            [col("a", null_rate=0.0, distinct_count=1000, top_values=top)], 1000
+        )
+        assert [f["flag"] for f in flags] == ["id_like"]
+
     def test_whitespace_variants_flagged_distinct_values_not(self):
         ws = [{"value": "N", "count": 900}, {"value": " N", "count": 10}]
         assert [f["flag"] for f in find_landmines(
@@ -284,15 +302,15 @@ from tests.conftest import DATASET, DOMAIN, VIEWS_PAYLOAD  # noqa: E402
 def stub_profile_aggregates(fake_portal):
     """Aggregate + top-values stubs matching conftest's 3-column schema.
 
-    offense_id: text, distinct == row_count (id-like); top values have a
-    case-variant pair. offense_date: 2019->2026 span (year granularity).
-    longitude: numeric with stats.
+    offense_id: text, high-cardinality but not id-like (249 of 250); top
+    values have a case-variant pair. offense_date: 2019->2026 span (year
+    granularity). longitude: numeric with stats.
     """
     fake_portal.stub(
         lambda p: "count(distinct" in p.get("$select", ""),
         [
             {
-                "nn_0": "250", "d_0": "250",
+                "nn_0": "250", "d_0": "249",
                 "nn_1": "250", "d_1": "12",
                 "mn_1": "2019-01-01T00:00:00.000",
                 "mx_1": "2026-06-01T00:00:00.000",
