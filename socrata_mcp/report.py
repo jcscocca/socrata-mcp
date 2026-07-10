@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from .profile import DATE_TYPES
+from .profile import DATE_TYPES, NUMERIC_TYPES
 
 TREND_YEAR_SPAN_DAYS = 1095  # >= ~3 years -> bucket by year, else by month
 TREND_MAX_POINTS = 200
@@ -74,3 +74,108 @@ def pick_category_columns(
         candidates.append(((null_rate, -distinct, pos), col))
     candidates.sort(key=lambda item: item[0])
     return [col for _, col in candidates[:MAX_CATEGORY_SECTIONS]]
+
+
+def find_landmines(
+    columns: list[dict[str, Any]], row_count: int | None
+) -> list[dict[str, Any]]:
+    """Heuristic data-quality flags, each a pure function of the profile."""
+    flags: list[dict[str, Any]] = []
+    for col in columns:
+        field = col["field_name"]
+        null_rate = col.get("null_rate")
+        if null_rate is not None and null_rate >= MOSTLY_NULL_RATE:
+            flags.append(
+                {
+                    "field_name": field,
+                    "flag": "mostly_null",
+                    "detail": f"{null_rate:.0%} of rows are null",
+                }
+            )
+        if col.get("distinct_count") == 1:
+            flags.append(
+                {
+                    "field_name": field,
+                    "flag": "constant",
+                    "detail": "single distinct value",
+                }
+            )
+        if is_id_like(col, row_count):
+            flags.append(
+                {
+                    "field_name": field,
+                    "flag": "id_like",
+                    "detail": "one distinct value per row",
+                }
+            )
+        seen: dict[str, str] = {}
+        for entry in col.get("top_values") or []:
+            value = entry.get("value")
+            if not isinstance(value, str):
+                continue
+            key = value.strip().lower()
+            if key in seen and seen[key] != value:
+                flags.append(
+                    {
+                        "field_name": field,
+                        "flag": "case_variants",
+                        "detail": (
+                            f"values {seen[key]!r} and {value!r} differ only "
+                            "by case/whitespace"
+                        ),
+                    }
+                )
+            seen.setdefault(key, value)
+    return flags
+
+
+def numeric_summary(
+    columns: list[dict[str, Any]], row_count: int | None
+) -> list[dict[str, Any]]:
+    out = []
+    for col in columns:
+        if col.get("type") not in NUMERIC_TYPES or is_id_like(col, row_count):
+            continue
+        if all(col.get(k) is None for k in ("min", "max", "avg")):
+            continue
+        out.append(
+            {k: col.get(k) for k in ("field_name", "min", "max", "avg", "null_rate")}
+        )
+    return out
+
+
+def trend_spec(
+    date_col: dict[str, Any], where: str | None
+) -> tuple[dict[str, Any], str]:
+    """Query-spec kwargs and granularity for the trend query."""
+    lo, hi = _parse_date(date_col["min"]), _parse_date(date_col["max"])
+    field = date_col["field_name"]
+    if (hi - lo).days >= TREND_YEAR_SPAN_DAYS:
+        bucket, granularity = f"date_extract_y({field})", "year"
+    else:
+        bucket, granularity = f"date_trunc_ym({field})", "month"
+    return (
+        {
+            "select": [f"{bucket} as bucket", "count(*) as n"],
+            "where": where,
+            "group": ["bucket"],
+            "order": "bucket DESC",
+            "limit": TREND_MAX_POINTS,
+        },
+        granularity,
+    )
+
+
+def describe_query(params: dict[str, str], limit: int) -> str:
+    """Readable SoQL for the report footer, from built query params."""
+    parts = []
+    if "$select" in params:
+        parts.append("SELECT " + params["$select"])
+    if "$where" in params:
+        parts.append("WHERE " + params["$where"])
+    if "$group" in params:
+        parts.append("GROUP BY " + params["$group"])
+    if "$order" in params:
+        parts.append("ORDER BY " + params["$order"])
+    parts.append(f"LIMIT {limit}")
+    return " ".join(parts)
