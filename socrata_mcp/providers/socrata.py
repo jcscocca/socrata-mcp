@@ -9,6 +9,7 @@ from typing import Any
 from ..cache import DiskCache
 from ..config import Config
 from ..errors import PortalError
+from ..export import RAW_EXPORT_DEFAULT_LIMIT, write_csv
 from ..http_client import HttpClient
 from ..profile import profile_columns
 from ..soql import BuiltQuery, build_query
@@ -16,6 +17,7 @@ from .base import Provider, QuerySpec
 
 DISCOVERY_URL = "https://api.us.socrata.com/api/catalog/v1"
 DESCRIPTION_LIMIT = 300
+SAMPLE_MAX = 100
 
 
 def _iso(epoch: Any) -> str | None:
@@ -253,7 +255,18 @@ class SocrataProvider(Provider):
         return result
 
     def sample(self, domain: str, dataset_id: str, n: int = 10) -> dict[str, Any]:
-        raise NotImplementedError
+        capped = max(1, min(n, SAMPLE_MAX))
+        result = self.query(domain, dataset_id, QuerySpec(limit=capped))
+        note = "first rows in :id order, not a random sample"
+        if n > SAMPLE_MAX:
+            note += f"; n capped at {SAMPLE_MAX}"
+        return {
+            "domain": domain,
+            "dataset_id": dataset_id,
+            "rows": result["rows"],
+            "row_count": result["row_count"],
+            "note": note,
+        }
 
     def export_csv(
         self,
@@ -263,4 +276,28 @@ class SocrataProvider(Provider):
         out_path: Path,
         max_rows: int | None = None,
     ) -> dict[str, Any]:
-        raise NotImplementedError
+        cap = min(max_rows or self.config.max_export_rows, self.config.max_export_rows)
+        default_limit = min(RAW_EXPORT_DEFAULT_LIMIT, cap) if spec.soql else cap
+        built = build_query(spec, default_limit=default_limit, max_rows=cap)
+
+        projected = built.raw or spec.select or spec.group
+        metadata_fieldnames = None
+        if not projected:
+            info = self.get_dataset(domain, dataset_id)
+            metadata_fieldnames = [
+                c["field_name"]
+                for c in info["columns"]
+                if c["field_name"] and not c["field_name"].startswith(":")
+            ]
+
+        url = self._resource_url(domain, dataset_id)
+        result = write_csv(
+            lambda params: self.http.get_json(url, params),
+            built,
+            Path(out_path),
+            page_size=self.config.page_size,
+            metadata_fieldnames=metadata_fieldnames,
+        )
+        result["domain"] = domain
+        result["dataset_id"] = dataset_id
+        return result
