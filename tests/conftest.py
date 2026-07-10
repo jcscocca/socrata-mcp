@@ -82,6 +82,8 @@ class FakePortal:
         for predicate, payload in self.stubs:
             if predicate(params):
                 body = payload(params) if callable(payload) else payload
+                if isinstance(body, httpx.Response):
+                    return body
                 return httpx.Response(200, json=body)
         rows = self.rows.get(dataset_id, [])
         select = params.get("$select", "")

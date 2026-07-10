@@ -10,6 +10,7 @@ from ..cache import DiskCache
 from ..config import Config
 from ..errors import PortalError
 from ..http_client import HttpClient
+from ..profile import profile_columns
 from ..soql import BuiltQuery, build_query
 from .base import Provider, QuerySpec
 
@@ -222,7 +223,34 @@ class SocrataProvider(Provider):
     # ------------------------------------------------------------------
 
     def profile_dataset(self, domain: str, dataset_id: str) -> dict[str, Any]:
-        raise NotImplementedError
+        info = self.get_dataset(domain, dataset_id)
+        total = info["row_count"]
+        if total is None:
+            raise PortalError(
+                "cannot profile: row count unavailable for this dataset",
+                url=self._resource_url(domain, dataset_id),
+            )
+
+        def compute() -> dict[str, Any]:
+            url = self._resource_url(domain, dataset_id)
+            columns, notes = profile_columns(
+                lambda params: self.http.get_json(url, params), info["columns"], total
+            )
+            return {
+                "domain": domain,
+                "dataset_id": dataset_id,
+                "row_count": total,
+                "columns": columns,
+                "notes": notes,
+            }
+
+        result, _ = self.cache.get_or_fetch(
+            "profile",
+            {"domain": domain, "dataset_id": dataset_id, "row_count": total},
+            ttl=self.config.query_ttl,
+            fetch=compute,
+        )
+        return result
 
     def sample(self, domain: str, dataset_id: str, n: int = 10) -> dict[str, Any]:
         raise NotImplementedError
