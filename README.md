@@ -51,6 +51,7 @@ Register with your MCP client (see `.mcp.json.example`):
 | `profile_dataset(domain, dataset_id)` | Per-column null rates, distinct counts, min/max for dates/numbers, top values for categoricals — all portal-side. |
 | `sample(domain, dataset_id, n?)` | First *n* rows (capped at 100) to see real values. |
 | `export_csv(domain, dataset_id, out_path, …)` | Streamed, paged CSV export of any query. |
+| `report(domain, dataset_id, out_path, where?, title?)` | One-call HTML report: auto-detected trend chart, top-category charts, numeric summary, data-quality flags. Self-contained file, no JS, no external requests. Also available without MCP: `socrata-mcp-report data.seattle.gov tazs-3rd5`. |
 
 Example agent flow:
 

@@ -95,3 +95,15 @@ def test_export_last_30_days_csv(live_provider, tmp_path):
         rows = list(csv.reader(handle))
     assert CATEGORY_FIELD in rows[0]
     assert len(rows) == result["rows_written"] + 1
+
+
+def test_report_generates_html(live_provider, tmp_path):
+    out = tmp_path / "spd-report.html"
+    result = live_provider.generate_report(DOMAIN, DATASET, out)
+    assert out.exists()
+    assert out.stat().st_size > 10_000
+    assert "trend" in result["sections"]
+    assert "quality" in result["sections"]
+    text = out.read_text(encoding="utf-8")
+    assert "<svg" in text
+    assert "date_extract_y" in text or "date_trunc_ym" in text  # footer query
