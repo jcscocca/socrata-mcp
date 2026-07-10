@@ -229,7 +229,8 @@ def report(
         out_path: Destination .html path (parent directories are created).
         where: Optional SoQL filter for the trend query, e.g.
             "offense_date >= '2025-01-01'". Profile-derived sections always
-            cover the full dataset; the report notes this when set.
+            cover the full dataset; the report notes this when a trend
+            chart is produced.
         title: Optional report title (defaults to the dataset name).
 
     Returns:
