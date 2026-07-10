@@ -106,3 +106,14 @@ class Provider(ABC):
         max_rows: int | None = None,
     ) -> dict[str, Any]:
         """Stream query results to a CSV file -> {path, rows_written, truncated}."""
+
+    @abstractmethod
+    def generate_report(
+        self,
+        domain: str,
+        dataset_id: str,
+        out_path: Path,
+        where: str | None = None,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        """Write a self-contained HTML report -> {path, sections, notes, queries}."""

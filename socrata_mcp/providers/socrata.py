@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ from ..errors import PortalError
 from ..export import RAW_EXPORT_DEFAULT_LIMIT, write_csv
 from ..http_client import HttpClient
 from ..profile import profile_columns
+from ..report import build_report, describe_query, pick_date_column, trend_spec
+from ..report_html import render_html
 from ..soql import BuiltQuery, build_query
 from .base import Provider, QuerySpec
 
@@ -304,3 +307,59 @@ class SocrataProvider(Provider):
         result["domain"] = domain
         result["dataset_id"] = dataset_id
         return result
+
+    def generate_report(
+        self,
+        domain: str,
+        dataset_id: str,
+        out_path: Path,
+        where: str | None = None,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        metadata = self.get_dataset(domain, dataset_id)
+        profile = self.profile_dataset(domain, dataset_id)
+
+        date_col = pick_date_column(profile["columns"])
+        trend_rows: list[dict[str, Any]] | None = None
+        granularity: str | None = None
+        queries: list[str] = []
+        if date_col is not None:
+            spec_args, granularity = trend_spec(date_col, where)
+            result = self.query(domain, dataset_id, QuerySpec(**spec_args))
+            trend_rows = result["rows"]
+            queries.append(
+                describe_query(
+                    result["query"]["params"], result["query"]["effective_limit"]
+                )
+            )
+
+        try:
+            version = importlib.metadata.version("socrata-mcp")
+        except importlib.metadata.PackageNotFoundError:
+            version = "dev"
+        model = build_report(
+            metadata,
+            profile,
+            trend_rows=trend_rows,
+            granularity=granularity,
+            date_col=date_col,
+            where=where,
+            queries=queries,
+            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            title=title,
+            version=version,
+        )
+        html_doc = render_html(model)
+
+        out = Path(out_path).expanduser()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        # Temp-then-rename: a failed run never leaves a partial report.
+        tmp = out.with_name(out.name + ".tmp")
+        tmp.write_text(html_doc, encoding="utf-8")
+        tmp.replace(out)
+        return {
+            "path": str(out),
+            "sections": model["sections"],
+            "notes": model["notes"],
+            "queries": model["queries"],
+        }

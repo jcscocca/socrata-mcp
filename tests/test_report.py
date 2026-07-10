@@ -270,3 +270,105 @@ class TestBuildReport:
         )
         assert not any("filtered by `where`" in n for n in model["notes"])
         assert any("no usable date column" in n for n in model["notes"])
+
+
+from tests.conftest import DATASET, DOMAIN, VIEWS_PAYLOAD  # noqa: E402
+
+
+def stub_profile_aggregates(fake_portal):
+    """Aggregate + top-values stubs matching conftest's 3-column schema.
+
+    offense_id: text, distinct == row_count (id-like); top values have a
+    case-variant pair. offense_date: 2019->2026 span (year granularity).
+    longitude: numeric with stats.
+    """
+    fake_portal.stub(
+        lambda p: "count(distinct" in p.get("$select", ""),
+        [
+            {
+                "nn_0": "250", "d_0": "250",
+                "nn_1": "250", "d_1": "12",
+                "mn_1": "2019-01-01T00:00:00.000",
+                "mx_1": "2026-06-01T00:00:00.000",
+                "nn_2": "200", "d_2": "180",
+                "mn_2": "-122.4", "mx_2": "-122.2", "av_2": "-122.3",
+            }
+        ],
+    )
+    fake_portal.stub(
+        lambda p: p.get("$group") == "offense_id",
+        [{"offense_id": "A", "count": "200"}, {"offense_id": "a", "count": "50"}],
+    )
+
+
+class TestGenerateReport:
+    def test_writes_report_and_returns_sections(self, provider, fake_portal, tmp_path):
+        fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(250)]
+        stub_profile_aggregates(fake_portal)
+        fake_portal.stub(
+            lambda p: "date_extract_y" in p.get("$select", ""),
+            [{"bucket": "2026", "n": "100"}, {"bucket": "2025", "n": "150"}],
+        )
+        out = tmp_path / "reports" / "spd.html"
+        result = provider.generate_report(DOMAIN, DATASET, out)
+        assert out.exists()
+        assert not out.with_name(out.name + ".tmp").exists()
+        assert result["path"] == str(out)
+        assert "trend" in result["sections"]
+        assert "quality" in result["sections"]
+        assert len(result["queries"]) == 1 and "date_extract_y" in result["queries"][0]
+        text = out.read_text(encoding="utf-8")
+        assert "<svg" in text
+        assert "SPD Crime Data" in text
+        assert "Case-variant values" in text  # offense_id A/a landmine
+
+    def test_where_scopes_trend_query(self, provider, fake_portal, tmp_path):
+        fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(250)]
+        stub_profile_aggregates(fake_portal)
+        fake_portal.stub(
+            lambda p: "date_extract_y" in p.get("$select", ""),
+            [{"bucket": "2026", "n": "10"}],
+        )
+        result = provider.generate_report(
+            DOMAIN, DATASET, tmp_path / "r.html", where="offense_date >= '2026-01-01'"
+        )
+        trend_requests = [
+            p
+            for _, p in fake_portal.requests
+            if "date_extract_y" in p.get("$select", "")
+        ]
+        assert trend_requests and trend_requests[0]["$where"] == (
+            "offense_date >= '2026-01-01'"
+        )
+        assert any("filtered by `where`" in n for n in result["notes"])
+
+    def test_no_date_column_still_renders(self, provider, fake_portal, tmp_path):
+        fake_portal.views[DATASET] = {
+            **VIEWS_PAYLOAD,
+            "columns": [
+                c
+                for c in VIEWS_PAYLOAD["columns"]
+                if c["dataTypeName"] != "calendar_date"
+            ],
+        }
+        fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(250)]
+        fake_portal.stub(
+            lambda p: "count(distinct" in p.get("$select", ""),
+            [
+                {
+                    "nn_0": "250", "d_0": "250",
+                    "nn_1": "200", "d_1": "180",
+                    "mn_1": "-122.4", "mx_1": "-122.2", "av_1": "-122.3",
+                }
+            ],
+        )
+        fake_portal.stub(
+            lambda p: p.get("$group") == "offense_id",
+            [{"offense_id": "A", "count": "200"}],
+        )
+        out = tmp_path / "r.html"
+        result = provider.generate_report(DOMAIN, DATASET, out)
+        assert out.exists()
+        assert "trend" not in result["sections"]
+        assert result["queries"] == []
+        assert any("no usable date column" in n for n in result["notes"])
