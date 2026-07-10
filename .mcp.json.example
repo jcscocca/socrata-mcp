@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "socrata": {
+      "command": "/absolute/path/to/socrata-mcp/.venv/bin/python",
+      "args": ["-m", "socrata_mcp"],
+      "env": {
+        "SOCRATA_APP_TOKEN": "optional-app-token"
+      }
+    }
+  }
+}

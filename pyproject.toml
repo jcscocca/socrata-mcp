@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "socrata-mcp"
+version = "0.1.0"
+description = "MCP server giving LLM agents typed, cached access to Socrata open-data portals (SODA 2.1 + Discovery API)."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=1.2",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+socrata-mcp = "socrata_mcp.server:main"
+
+[tool.setuptools.packages.find]
+include = ["socrata_mcp*"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not network'"
+markers = [
+    "network: live tests against real Socrata portals (deselected by default)",
+]
