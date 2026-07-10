@@ -179,3 +179,16 @@ class TestRenderHtml:
     def test_where_filter_shown(self):
         out = render_html(make_model(where="occ_date >= '2025-01-01'"))
         assert "occ_date &gt;= &#x27;2025-01-01&#x27;" in out
+
+    def test_where_filter_hidden_without_trend(self):
+        model = make_model(
+            where="occ_date >= '2025-01-01'",
+            sections=["quality"], trend=None, categories=[], numeric=[],
+        )
+        out = render_html(model)
+        assert "Filter:" not in out
+
+    def test_data_updated_at_in_header(self):
+        out = render_html(make_model())
+        assert "data updated 2026-07-01" in out
+        assert "data updated" not in render_html(make_model(data_updated_at=None))

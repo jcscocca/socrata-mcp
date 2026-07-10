@@ -225,6 +225,8 @@ def _header_html(model: dict[str, Any]) -> str:
         )
     if model["update_frequency"]:
         meta_bits.append(f"updated {_esc(model['update_frequency'])}")
+    if model["data_updated_at"]:
+        meta_bits.append(f"data updated {_esc(str(model['data_updated_at'])[:10])}")
     if model["license"]:
         meta_bits.append(_esc(model["license"]))
     lines = [
@@ -233,7 +235,7 @@ def _header_html(model: dict[str, Any]) -> str:
     ]
     if model["attribution"]:
         lines.append(f'<p class="meta">Source: {_esc(model["attribution"])}</p>')
-    if model["where"]:
+    if model["where"] and model.get("trend"):
         lines.append(
             f'<p class="meta">Filter: <code>{_esc(model["where"])}</code></p>'
         )
