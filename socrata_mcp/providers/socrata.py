@@ -194,7 +194,14 @@ class SocrataProvider(Provider):
                 break
         return rows
 
-    def query(self, domain: str, dataset_id: str, spec: QuerySpec) -> dict[str, Any]:
+    def query(
+        self,
+        domain: str,
+        dataset_id: str,
+        spec: QuerySpec,
+        *,
+        cache_salt: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         built = build_query(
             spec, default_limit=self.config.default_limit, max_rows=self.config.max_rows
         )
@@ -205,6 +212,8 @@ class SocrataProvider(Provider):
             "effective_limit": built.effective_limit,
             "base_offset": built.base_offset,
         }
+        if cache_salt:
+            cache_key["salt"] = cache_salt
         rows, _ = self.cache.get_or_fetch(
             "query",
             cache_key,
@@ -326,7 +335,14 @@ class SocrataProvider(Provider):
         queries: list[str] = []
         if date_col is not None:
             spec_args, granularity = trend_spec(date_col, where)
-            result = self.query(domain, dataset_id, QuerySpec(**spec_args))
+            # Salt the query cache with dataset freshness so a regenerated
+            # report can't pair a fresh profile with an hour-stale trend.
+            result = self.query(
+                domain,
+                dataset_id,
+                QuerySpec(**spec_args),
+                cache_salt={"data_updated_at": metadata.get("data_updated_at")},
+            )
             trend_rows = result["rows"]
             trend_truncated = result["truncated"]
             queries.append(

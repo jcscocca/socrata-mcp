@@ -1,3 +1,5 @@
+import shutil
+
 from socrata_mcp.report import is_id_like, pick_category_columns, pick_date_column
 
 
@@ -376,3 +378,40 @@ class TestGenerateReport:
         assert "trend" not in result["sections"]
         assert result["queries"] == []
         assert any("no usable date column" in n for n in result["notes"])
+
+
+class TestTrendCacheCoherence:
+    def _trend_requests(self, fake_portal):
+        return [
+            p
+            for _, p in fake_portal.requests
+            if "date_extract_y" in p.get("$select", "")
+        ]
+
+    def _prime(self, fake_portal):
+        fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(250)]
+        stub_profile_aggregates(fake_portal)
+        fake_portal.stub(
+            lambda p: "date_extract_y" in p.get("$select", ""),
+            [{"bucket": "2026", "n": "100"}],
+        )
+
+    def test_trend_refetched_when_data_updated_at_changes(
+        self, provider, fake_portal, tmp_path
+    ):
+        self._prime(fake_portal)
+        provider.generate_report(DOMAIN, DATASET, tmp_path / "a.html")
+        assert len(self._trend_requests(fake_portal)) == 1
+
+        # Portal publishes new data; metadata cache expires (its TTL is far
+        # shorter than the query TTL) while the trend query cache does not.
+        fake_portal.views[DATASET] = {**VIEWS_PAYLOAD, "rowsUpdatedAt": 1767312000}
+        shutil.rmtree(provider.config.cache_dir / "metadata")
+        provider.generate_report(DOMAIN, DATASET, tmp_path / "b.html")
+        assert len(self._trend_requests(fake_portal)) == 2
+
+    def test_trend_cached_when_dataset_unchanged(self, provider, fake_portal, tmp_path):
+        self._prime(fake_portal)
+        provider.generate_report(DOMAIN, DATASET, tmp_path / "a.html")
+        provider.generate_report(DOMAIN, DATASET, tmp_path / "b.html")
+        assert len(self._trend_requests(fake_portal)) == 1
