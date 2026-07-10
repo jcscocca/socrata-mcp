@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         result = _make_provider().generate_report(
             args.domain, args.dataset_id, out, where=args.where, title=args.title
         )
-    except SocrataMCPError as exc:
+    except (SocrataMCPError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     for note in result["notes"]:

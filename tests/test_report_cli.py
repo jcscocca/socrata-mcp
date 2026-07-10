@@ -40,7 +40,7 @@ def test_happy_path_prints_path_and_notes(monkeypatch, capsys, tmp_path):
     assert stub.calls[0]["title"] == "T"
 
 
-def test_default_out_path(monkeypatch, capsys):
+def test_default_out_path(monkeypatch):
     stub = StubProvider(
         result={"path": "abcd-1234-report.html", "sections": [], "notes": [], "queries": []}
     )
@@ -54,3 +54,10 @@ def test_error_exits_nonzero(monkeypatch, capsys):
     code = report_cli.main(["data.example.gov", "nope-0000"])
     assert code == 1
     assert "no such view" in capsys.readouterr().err
+
+
+def test_write_error_exits_nonzero(monkeypatch, capsys):
+    install(monkeypatch, StubProvider(error=PermissionError("denied")))
+    code = report_cli.main(["data.example.gov", "abcd-1234", "-o", "/nope/r.html"])
+    assert code == 1
+    assert "denied" in capsys.readouterr().err
