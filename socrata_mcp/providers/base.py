@@ -6,7 +6,10 @@ against these types without touching the tool layer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -57,3 +60,49 @@ class QuerySpec:
                 self.within_box,
             )
         )
+
+
+class Provider(ABC):
+    """One open-data backend (Socrata now, CKAN later).
+
+    All methods return plain JSON-serializable dicts; the MCP tool layer
+    passes them through untouched.
+    """
+
+    @abstractmethod
+    def search_datasets(
+        self,
+        query: str,
+        domain: str | None = None,
+        category: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Full-text catalog search -> {results, total, count, offset}."""
+
+    @abstractmethod
+    def get_dataset(self, domain: str, dataset_id: str) -> dict[str, Any]:
+        """Dataset metadata: columns w/ types, row count, cadence, license."""
+
+    @abstractmethod
+    def query(self, domain: str, dataset_id: str, spec: QuerySpec) -> dict[str, Any]:
+        """Run a validated, paged query -> {rows, row_count, truncated, query}."""
+
+    @abstractmethod
+    def profile_dataset(self, domain: str, dataset_id: str) -> dict[str, Any]:
+        """Per-column stats computed portal-side via aggregate queries."""
+
+    @abstractmethod
+    def sample(self, domain: str, dataset_id: str, n: int = 10) -> dict[str, Any]:
+        """First n rows -> {rows, row_count}."""
+
+    @abstractmethod
+    def export_csv(
+        self,
+        domain: str,
+        dataset_id: str,
+        spec: QuerySpec,
+        out_path: Path,
+        max_rows: int | None = None,
+    ) -> dict[str, Any]:
+        """Stream query results to a CSV file -> {path, rows_written, truncated}."""
