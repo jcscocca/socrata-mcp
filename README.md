@@ -17,7 +17,7 @@ Highlights:
 - **Loud failures** — the portal's actual error message is surfaced to the
   agent, never swallowed.
 - **Tableau-ready CSV export** — streamed, paged download designed to chain
-  into [vizforge](https://github.com/jscocca/vizforge)'s `csv_to_dashboard`.
+  into [vizforge](https://github.com/jcscocca/vizforge)'s `csv_to_dashboard`.
 
 ## Install
 
