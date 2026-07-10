@@ -167,3 +167,98 @@ class TestDescribeQuery:
             "SELECT date_extract_y(occ) as bucket, count(*) as n "
             "WHERE occ >= '2025-01-01' GROUP BY bucket ORDER BY bucket DESC LIMIT 200"
         )
+
+
+from socrata_mcp.report import TREND_MAX_POINTS, build_report  # noqa: E402
+
+METADATA = {
+    "id": "abcd-1234",
+    "domain": "data.example.gov",
+    "name": "SPD Crime Data",
+    "source_url": "https://data.example.gov/d/abcd-1234",
+    "update_frequency": "Daily",
+    "license": "Public Domain",
+    "attribution": "Seattle Police Department",
+    "data_updated_at": "2026-07-01T00:00:00+00:00",
+}
+
+
+def make_profile():
+    return {
+        "row_count": 1000,
+        "notes": ["profiled first 50 of 60 columns"],
+        "columns": [
+            date_col("occ_date", 0.0, "2019-01-01T00:00:00.000", "2026-06-01T00:00:00.000"),
+            col(
+                "status",
+                null_rate=0.0,
+                distinct_count=3,
+                non_null_count=1000,
+                top_values=[{"value": "OPEN", "count": 700}, {"value": "CLOSED", "count": 250}],
+            ),
+            col("lon", "number", null_rate=0.1, min=-122.4, max=-122.2, avg=-122.3),
+            col("broken", error="portal said no"),
+        ],
+    }
+
+
+def build(**overrides):
+    profile = make_profile()
+    kwargs = dict(
+        trend_rows=[{"bucket": "2026", "n": "100"}, {"bucket": "2025", "n": "150"}],
+        granularity="year",
+        date_col=profile["columns"][0],
+        where=None,
+        queries=["SELECT ... LIMIT 200"],
+        generated_at="2026-07-10 12:00 UTC",
+        title=None,
+        version="0.1.0",
+    )
+    kwargs.update(overrides)
+    return build_report(METADATA, profile, **kwargs)
+
+
+class TestBuildReport:
+    def test_happy_path_model(self):
+        model = build()
+        assert model["sections"] == ["trend", "categories", "numeric", "quality"]
+        assert model["title"] == "SPD Crime Data"
+        assert model["trend"]["points"] == [
+            {"bucket": "2025", "n": 150},
+            {"bucket": "2026", "n": 100},
+        ]
+        assert model["categories"][0]["field_name"] == "status"
+        assert model["categories"][0]["coverage"] == 0.95
+        assert model["numeric"][0]["field_name"] == "lon"
+        assert model["quality"]["null_rates"][0]["field_name"] in {"occ_date", "status", "lon", "broken"}
+        assert "broken: portal said no" in model["quality"]["profile_notes"]
+        assert "profiled first 50 of 60 columns" in model["quality"]["profile_notes"]
+        assert model["queries"] == ["SELECT ... LIMIT 200"]
+        assert model["notes"] == []
+
+    def test_no_date_column(self):
+        model = build(trend_rows=None, granularity=None, date_col=None, queries=[])
+        assert "trend" not in model["sections"]
+        assert model["trend"] is None
+        assert model["date_span"] is None
+        assert any("no usable date column" in n for n in model["notes"])
+
+    def test_empty_trend_rows(self):
+        model = build(trend_rows=[])
+        assert "trend" not in model["sections"]
+        assert any("trend query returned no rows" in n for n in model["notes"])
+
+    def test_null_buckets_dropped(self):
+        model = build(trend_rows=[{"bucket": None, "n": "5"}, {"bucket": "2026", "n": "100"}])
+        assert model["trend"]["points"] == [{"bucket": "2026", "n": 100}]
+
+    def test_truncation_note(self):
+        rows = [{"bucket": str(3000 - i), "n": "1"} for i in range(TREND_MAX_POINTS)]
+        model = build(trend_rows=rows)
+        assert any("most recent" in n for n in model["notes"])
+
+    def test_where_note_and_title_override(self):
+        model = build(where="occ_date >= '2025-01-01'", title="Custom")
+        assert model["title"] == "Custom"
+        assert model["where"] == "occ_date >= '2025-01-01'"
+        assert any("filtered by `where`" in n for n in model["notes"])

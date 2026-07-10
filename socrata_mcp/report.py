@@ -166,6 +166,131 @@ def trend_spec(
     )
 
 
+def build_report(
+    metadata: dict[str, Any],
+    profile: dict[str, Any],
+    *,
+    trend_rows: list[dict[str, Any]] | None,
+    granularity: str | None,
+    date_col: dict[str, Any] | None,
+    where: str | None,
+    queries: list[str],
+    generated_at: str,
+    title: str | None = None,
+    version: str = "dev",
+) -> dict[str, Any]:
+    """Assemble the report model. Pure: no I/O, no clocks."""
+    columns = profile.get("columns", [])
+    row_count = profile.get("row_count")
+    notes: list[str] = []
+    sections: list[str] = []
+
+    trend = None
+    if date_col is None:
+        notes.append("no usable date column; trend section skipped")
+    elif trend_rows is not None:
+        points = [
+            {"bucket": row["bucket"], "n": int(row["n"])}
+            for row in trend_rows
+            if row.get("bucket") is not None and row.get("n") is not None
+        ]
+        points.reverse()  # query is most-recent-first
+        if len(trend_rows) >= TREND_MAX_POINTS:
+            notes.append(
+                f"trend truncated to the most recent {TREND_MAX_POINTS} buckets"
+            )
+        if points:
+            trend = {
+                "field": date_col["field_name"],
+                "granularity": granularity,
+                "points": points,
+            }
+            sections.append("trend")
+        else:
+            notes.append("trend query returned no rows; trend section skipped")
+
+    categories = []
+    for col in pick_category_columns(columns, row_count):
+        non_null = col.get("non_null_count")
+        values = [
+            {"value": entry.get("value"), "count": entry.get("count")}
+            for entry in col["top_values"]
+        ]
+        shown = sum(entry["count"] or 0 for entry in values)
+        categories.append(
+            {
+                "field_name": col["field_name"],
+                "distinct_count": col.get("distinct_count"),
+                "null_rate": col.get("null_rate"),
+                "values": values,
+                "coverage": round(shown / non_null, 4) if non_null else None,
+            }
+        )
+    if categories:
+        sections.append("categories")
+
+    numeric = numeric_summary(columns, row_count)
+    if numeric:
+        sections.append("numeric")
+
+    quality = {
+        "null_rates": sorted(
+            (
+                {
+                    k: col.get(k)
+                    for k in ("field_name", "type", "null_rate", "distinct_count")
+                }
+                for col in columns
+            ),
+            key=lambda c: -(c["null_rate"] or 0),
+        ),
+        "flags": find_landmines(columns, row_count),
+        "profile_notes": list(profile.get("notes") or [])
+        + [f"{c['field_name']}: {c['error']}" for c in columns if c.get("error")],
+    }
+    if quality["null_rates"]:
+        sections.append("quality")
+
+    if where:
+        notes.append(
+            "trend is filtered by `where`; profile-derived sections cover "
+            "the full dataset"
+        )
+
+    date_span = None
+    if date_col is not None:
+        date_span = {
+            "field": date_col["field_name"],
+            "min": date_col.get("min"),
+            "max": date_col.get("max"),
+        }
+
+    return {
+        "title": title
+        or metadata.get("name")
+        or f"{metadata.get('domain')}/{metadata.get('id')}",
+        "domain": metadata.get("domain"),
+        "dataset_id": metadata.get("id"),
+        "source_url": metadata.get("source_url"),
+        "row_count": row_count,
+        "update_frequency": metadata.get("update_frequency"),
+        "license": metadata.get("license"),
+        "attribution": metadata.get("attribution"),
+        "data_updated_at": metadata.get("data_updated_at"),
+        "generated_at": generated_at,
+        "where": where,
+        "date_span": date_span,
+        "sections": sections,
+        "trend": trend,
+        "categories": categories,
+        "numeric": numeric,
+        "quality": quality,
+        "queries": queries,
+        "notes": notes,
+        "version": version,
+    }
+
+
 def describe_query(params: dict[str, str], limit: int) -> str:
     """Readable SoQL for the report footer, from built query params."""
     parts = []
