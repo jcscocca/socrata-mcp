@@ -205,3 +205,38 @@ def export_csv(
     return get_provider().export_csv(
         domain, dataset_id, spec, out_path, max_rows=max_rows
     )
+
+
+@server.tool()
+def report(
+    domain: str,
+    dataset_id: str,
+    out_path: str,
+    where: str | None = None,
+    title: str | None = None,
+) -> dict[str, Any]:
+    """Generate a self-contained HTML report for a dataset.
+
+    Fully automatic: profiles the dataset, picks the primary date column and
+    the most informative categorical columns, runs a trend query, and writes
+    one dependency-free HTML file with charts, summary tables, and
+    data-quality flags. Deterministic for a given dataset state — no model
+    or human judgment in the loop.
+
+    Args:
+        domain: Portal hostname, e.g. "data.seattle.gov".
+        dataset_id: Socrata 4x4 id, e.g. "tazs-3rd5".
+        out_path: Destination .html path (parent directories are created).
+        where: Optional SoQL filter for the trend query, e.g.
+            "offense_date >= '2025-01-01'". Profile-derived sections always
+            cover the full dataset; the report notes this when set.
+        title: Optional report title (defaults to the dataset name).
+
+    Returns:
+        {path, sections, notes, queries}. `sections` lists content sections
+        rendered (from ["trend", "categories", "numeric", "quality"]);
+        `queries` holds the SoQL executed, also shown in the report footer.
+    """
+    return get_provider().generate_report(
+        domain, dataset_id, out_path, where=where, title=title
+    )

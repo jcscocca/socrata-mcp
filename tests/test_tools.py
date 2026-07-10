@@ -16,6 +16,7 @@ EXPECTED_TOOLS = {
     "profile_dataset",
     "sample",
     "export_csv",
+    "report",
 }
 
 
@@ -154,4 +155,26 @@ async def test_export_csv_tool(mcp_provider, fake_portal, tmp_path):
         )
         data = result_json(result)
         assert data["rows_written"] == 5
+        assert out.exists()
+
+
+@pytest.mark.anyio
+async def test_report_tool(mcp_provider, fake_portal, tmp_path):
+    from tests.test_report import stub_profile_aggregates
+
+    fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(250)]
+    stub_profile_aggregates(fake_portal)
+    fake_portal.stub(
+        lambda p: "date_extract_y" in p.get("$select", ""),
+        [{"bucket": "2026", "n": "100"}],
+    )
+    out = tmp_path / "report.html"
+    async with client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "report",
+            {"domain": DOMAIN, "dataset_id": DATASET, "out_path": str(out)},
+        )
+        data = result_json(result)
+        assert data["path"] == str(out)
+        assert "quality" in data["sections"]
         assert out.exists()
