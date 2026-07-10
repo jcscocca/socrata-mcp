@@ -19,7 +19,8 @@ pytestmark = pytest.mark.network
 
 DOMAIN = "data.seattle.gov"
 DATASET = "tazs-3rd5"  # SPD Crime Data 2008-Present
-DATE_FIELD = "offense_start_datetime"
+DATE_FIELD = "offense_date"
+CATEGORY_FIELD = "offense_category"
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +51,7 @@ def test_get_dataset_spd_crime(live_provider):
     assert info["row_count"] > 100_000
     fields = {c["field_name"] for c in info["columns"]}
     assert DATE_FIELD in fields
-    assert "offense" in fields
+    assert CATEGORY_FIELD in fields
     date_col = next(c for c in info["columns"] if c["field_name"] == DATE_FIELD)
     assert date_col["type"] == "calendar_date"
     assert info["data_updated_at"] is not None
@@ -60,9 +61,9 @@ def test_profile_spd_crime(live_provider):
     profile = live_provider.profile_dataset(DOMAIN, DATASET)
     assert profile["row_count"] > 100_000
     cols = {c["field_name"]: c for c in profile["columns"]}
-    offense = cols["offense"]
-    assert offense.get("distinct_count", 0) > 10
-    assert offense.get("top_values"), "offense is low-cardinality text; expect top values"
+    offense = cols[CATEGORY_FIELD]
+    assert offense.get("distinct_count", 0) > 2
+    assert offense.get("top_values"), "offense_category is low-cardinality; expect top values"
     assert 0 <= offense["null_rate"] <= 1
     date_col = cols[DATE_FIELD]
     assert date_col.get("min", "") < date_col.get("max", "")
@@ -92,5 +93,5 @@ def test_export_last_30_days_csv(live_provider, tmp_path):
     assert result["rows_written"] > 100
     with out.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.reader(handle))
-    assert "offense" in rows[0]
+    assert CATEGORY_FIELD in rows[0]
     assert len(rows) == result["rows_written"] + 1

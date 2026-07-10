@@ -27,6 +27,9 @@ class TestSearch:
         assert path == "api.us.socrata.com/api/catalog/v1"
         assert params["q"] == "crime"
         assert params["domains"] == DOMAIN
+        # Discovery quirk: with `domains` alone, federated portals return 0
+        # hits for full-text queries; `search_context` must accompany it.
+        assert params["search_context"] == DOMAIN
         assert params["categories"] == "Public Safety"
         assert params["only"] == "dataset"
         assert params["limit"] == "5"

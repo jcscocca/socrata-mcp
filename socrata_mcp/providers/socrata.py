@@ -72,7 +72,10 @@ class SocrataProvider(Provider):
             "offset": offset,
         }
         if domain:
+            # `domains` alone yields 0 hits for full-text searches on federated
+            # portals (observed on data.seattle.gov); search_context fixes it.
             params["domains"] = domain
+            params["search_context"] = domain
         if category:
             params["categories"] = category
 
