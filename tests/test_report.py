@@ -253,9 +253,13 @@ class TestBuildReport:
         assert model["trend"]["points"] == [{"bucket": "2026", "n": 100}]
 
     def test_truncation_note(self):
+        model = build(trend_rows=[{"bucket": "2026", "n": "1"}], trend_truncated=True)
+        assert any("truncated" in n for n in model["notes"])
+
+    def test_exactly_max_points_without_flag_is_not_truncated(self):
         rows = [{"bucket": str(3000 - i), "n": "1"} for i in range(TREND_MAX_POINTS)]
         model = build(trend_rows=rows)
-        assert any("most recent" in n for n in model["notes"])
+        assert not any("truncated" in n for n in model["notes"])
 
     def test_where_note_and_title_override(self):
         model = build(where="occ_date >= '2025-01-01'", title="Custom")

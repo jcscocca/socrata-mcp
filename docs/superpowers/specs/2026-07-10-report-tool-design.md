@@ -22,7 +22,7 @@ report(domain, dataset_id, out_path, where=None, title=None)
 - `where`: optional SoQL filter applied to every query the report runs
   (e.g. `"occ_date >= '2025-01-01'"`). The profile is unfiltered (portal
   aggregates over the full dataset); a note in the report says so when a
-  `where` is active.
+  `where` is active and a trend chart is produced.
 - `title`: overrides the dataset name in the report header.
 - `sections`: content sections actually rendered, from
   `["trend", "categories", "numeric", "quality"]` — header and footer
@@ -64,7 +64,7 @@ profile + one trend query.
 Sections, in order. A section that has nothing to show is omitted and noted.
 
 1. **Header** — title, domain/dataset id (linked to source_url), row count,
-   primary date span, update cadence, license/attribution, generated-at.
+   primary date span, update cadence, license/attribution.
 2. **Trend** — SVG column chart of `count(*)` grouped over the primary date
    column. Granularity: by year (`date_extract_y`) when the span ≥ 1095
    days, else by month (`date_trunc_ym`). Query limit 200 points; if more

@@ -1,6 +1,8 @@
 # Automatic Dataset Report Tool Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+
+> **Status:** Complete — implemented on `feature/report-tool`, verified live against data.seattle.gov (2026-07-10).
 
 **Goal:** One call (MCP tool `report` or CLI `socrata-mcp-report`) turns any Socrata dataset into a self-contained HTML report with charts, summary tables, and data-quality flags — deterministic, no model in the loop.
 
@@ -36,7 +38,7 @@ Run all commands from the repo root with the venv active: `source .venv/bin/acti
 - Create: `socrata_mcp/report.py`
 - Test: `tests/test_report.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_report.py`:
 
@@ -119,12 +121,12 @@ class TestPickCategoryColumns:
         assert len(pick_category_columns(cols, 1000)) == 3
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'socrata_mcp.report'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `socrata_mcp/report.py`:
 
@@ -207,12 +209,12 @@ def pick_category_columns(
     return [col for _, col in candidates[:MAX_CATEGORY_SECTIONS]]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report.py -v`
 Expected: PASS (9 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add socrata_mcp/report.py tests/test_report.py
@@ -227,7 +229,7 @@ git commit -m "feat: report column-selection heuristics"
 - Modify: `socrata_mcp/report.py`
 - Test: `tests/test_report.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_report.py`:
 
@@ -325,12 +327,12 @@ class TestDescribeQuery:
         )
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report.py -v`
 Expected: FAIL — `ImportError: cannot import name 'describe_query'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `socrata_mcp/report.py`, change the profile import to:
 
@@ -446,12 +448,12 @@ def describe_query(params: dict[str, str], limit: int) -> str:
     return " ".join(parts)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report.py -v`
 Expected: PASS (18 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add socrata_mcp/report.py tests/test_report.py
@@ -466,7 +468,7 @@ git commit -m "feat: landmine flags, trend spec, query description"
 - Modify: `socrata_mcp/report.py`
 - Test: `tests/test_report.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_report.py`:
 
@@ -566,12 +568,12 @@ class TestBuildReport:
         assert any("filtered by `where`" in n for n in model["notes"])
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report.py -v`
 Expected: FAIL — `ImportError: cannot import name 'build_report'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Append to `socrata_mcp/report.py`:
 
@@ -701,12 +703,12 @@ def build_report(
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report.py -v`
 Expected: PASS (24 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add socrata_mcp/report.py tests/test_report.py
@@ -721,7 +723,7 @@ git commit -m "feat: build_report model assembly"
 - Create: `socrata_mcp/report_html.py`
 - Test: `tests/test_report_html.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_report_html.py`:
 
@@ -784,12 +786,12 @@ class TestBarChart:
         ET.fromstring(svg)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report_html.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'socrata_mcp.report_html'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `socrata_mcp/report_html.py`:
 
@@ -945,12 +947,12 @@ def bar_chart_svg(values: list[tuple[str, float]], *, aria_label: str) -> str:
     return "".join(parts)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report_html.py -v`
 Expected: PASS (6 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add socrata_mcp/report_html.py tests/test_report_html.py
@@ -965,7 +967,7 @@ git commit -m "feat: SVG chart helpers for reports"
 - Modify: `socrata_mcp/report_html.py`
 - Test: `tests/test_report_html.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_report_html.py`:
 
@@ -1082,12 +1084,12 @@ class TestRenderHtml:
         assert "occ_date &gt;= &#x27;2025-01-01&#x27;" in out
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report_html.py -v`
 Expected: FAIL — `ImportError: cannot import name 'render_html'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Append to `socrata_mcp/report_html.py`:
 
@@ -1312,12 +1314,12 @@ def render_html(model: dict[str, Any]) -> str:
     return "\n".join(part for part in parts if part)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report_html.py -v`
 Expected: PASS (10 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add socrata_mcp/report_html.py tests/test_report_html.py
@@ -1333,7 +1335,7 @@ git commit -m "feat: HTML report renderer"
 - Modify: `socrata_mcp/providers/socrata.py`
 - Test: `tests/test_report.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_report.py`:
 
@@ -1440,12 +1442,12 @@ class TestGenerateReport:
         assert any("no usable date column" in n for n in result["notes"])
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report.py -v -k GenerateReport`
 Expected: FAIL — `AttributeError: 'SocrataProvider' object has no attribute 'generate_report'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `socrata_mcp/providers/base.py`, append inside the `Provider` class after `export_csv`:
 
@@ -1533,17 +1535,17 @@ Then append this method to `SocrataProvider`:
         }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report.py -v`
 Expected: PASS (27 tests)
 
-- [ ] **Step 5: Run the whole suite (the ABC change affects other tests)**
+- [x] **Step 5: Run the whole suite (the ABC change affects other tests)**
 
 Run: `pytest`
 Expected: all tests PASS (`SocrataProvider` implements the new abstract method; no other `Provider` subclass exists)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add socrata_mcp/providers/base.py socrata_mcp/providers/socrata.py tests/test_report.py
@@ -1558,7 +1560,7 @@ git commit -m "feat: provider generate_report with temp-file write"
 - Modify: `socrata_mcp/mcp/tools.py`
 - Test: `tests/test_tools.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_tools.py`, add `"report"` to `EXPECTED_TOOLS`:
 
@@ -1599,12 +1601,12 @@ async def test_report_tool(mcp_provider, fake_portal, tmp_path):
         assert out.exists()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_tools.py -v`
 Expected: FAIL — `test_all_tools_registered` (report missing) and `test_report_tool` (unknown tool)
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Append to `socrata_mcp/mcp/tools.py`:
 
@@ -1644,12 +1646,12 @@ def report(
     )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_tools.py -v`
 Expected: PASS (10 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add socrata_mcp/mcp/tools.py tests/test_tools.py
@@ -1665,7 +1667,7 @@ git commit -m "feat: report MCP tool"
 - Modify: `pyproject.toml` (the `[project.scripts]` table)
 - Test: `tests/test_report_cli.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_report_cli.py`:
 
@@ -1728,12 +1730,12 @@ def test_error_exits_nonzero(monkeypatch, capsys):
     assert "no such view" in capsys.readouterr().err
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_report_cli.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'socrata_mcp.report_cli'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `socrata_mcp/report_cli.py`:
 
@@ -1799,17 +1801,17 @@ socrata-mcp = "socrata_mcp.server:main"
 socrata-mcp-report = "socrata_mcp.report_cli:main"
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_report_cli.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Verify the console script resolves**
+- [x] **Step 5: Verify the console script resolves**
 
 Run: `pip install -e . --quiet && socrata-mcp-report --help`
 Expected: usage text listing `domain`, `dataset_id`, `-o`, `--where`, `--title`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add socrata_mcp/report_cli.py tests/test_report_cli.py pyproject.toml
@@ -1824,7 +1826,7 @@ git commit -m "feat: socrata-mcp-report CLI"
 - Modify: `tests/test_live_smoke.py`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add the live smoke test**
+- [x] **Step 1: Add the live smoke test**
 
 Append to `tests/test_live_smoke.py`:
 
@@ -1841,7 +1843,7 @@ def test_report_generates_html(live_provider, tmp_path):
     assert "date_extract_y" in text or "date_trunc_ym" in text  # footer query
 ```
 
-- [ ] **Step 2: Update README**
+- [x] **Step 2: Update README**
 
 In `README.md`, add `report` to the tool list (mirror the existing per-tool phrasing, after `export_csv`):
 
@@ -1854,12 +1856,12 @@ In `README.md`, add `report` to the tool list (mirror the existing per-tool phra
 
 Adjust wording to match the README's actual list style when editing.
 
-- [ ] **Step 3: Run the full offline suite**
+- [x] **Step 3: Run the full offline suite**
 
 Run: `pytest`
 Expected: all tests PASS
 
-- [ ] **Step 4: Run the live smoke suite (network access required)**
+- [x] **Step 4: Run the live smoke suite (network access required)**
 
 Run: `pytest -m network --no-header -rN`
 Expected: PASS, including `test_report_generates_html`. If the portal is
@@ -1867,7 +1869,7 @@ unreachable, note the failure and re-run later — do not mark this task
 complete with a failing live test unless the failure is confirmed to be
 network availability, not the code.
 
-- [ ] **Step 5: Generate a real report and eyeball it**
+- [x] **Step 5: Generate a real report and eyeball it**
 
 Run: `socrata-mcp-report data.seattle.gov tazs-3rd5 -o out/spd-report.html`
 Expected: prints `out/spd-report.html`; open the file and confirm the header,
@@ -1875,7 +1877,7 @@ trend chart, category charts, and quality tables render sensibly in both
 light and dark mode (macOS: toggle appearance, or use browser dev tools
 `prefers-color-scheme` emulation).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_live_smoke.py README.md

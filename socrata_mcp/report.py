@@ -172,6 +172,7 @@ def build_report(
     *,
     trend_rows: list[dict[str, Any]] | None,
     granularity: str | None,
+    trend_truncated: bool = False,
     date_col: dict[str, Any] | None,
     where: str | None,
     queries: list[str],
@@ -195,10 +196,8 @@ def build_report(
             if row.get("bucket") is not None and row.get("n") is not None
         ]
         points.reverse()  # query is most-recent-first
-        if len(trend_rows) >= TREND_MAX_POINTS:
-            notes.append(
-                f"trend truncated to the most recent {TREND_MAX_POINTS} buckets"
-            )
+        if trend_truncated:
+            notes.append("trend truncated to the most recent buckets returned")
         if points:
             trend = {
                 "field": date_col["field_name"],

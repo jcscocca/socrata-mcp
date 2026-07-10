@@ -322,11 +322,13 @@ class SocrataProvider(Provider):
         date_col = pick_date_column(profile["columns"])
         trend_rows: list[dict[str, Any]] | None = None
         granularity: str | None = None
+        trend_truncated = False
         queries: list[str] = []
         if date_col is not None:
             spec_args, granularity = trend_spec(date_col, where)
             result = self.query(domain, dataset_id, QuerySpec(**spec_args))
             trend_rows = result["rows"]
+            trend_truncated = result["truncated"]
             queries.append(
                 describe_query(
                     result["query"]["params"], result["query"]["effective_limit"]
@@ -342,6 +344,7 @@ class SocrataProvider(Provider):
             profile,
             trend_rows=trend_rows,
             granularity=granularity,
+            trend_truncated=trend_truncated,
             date_col=date_col,
             where=where,
             queries=queries,
