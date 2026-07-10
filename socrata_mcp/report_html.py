@@ -149,3 +149,223 @@ def bar_chart_svg(values: list[tuple[str, float]], *, aria_label: str) -> str:
         )
     parts.append("</svg>")
     return "".join(parts)
+
+
+FLAG_LABELS = {
+    "mostly_null": "Mostly null",
+    "constant": "Constant value",
+    "id_like": "One value per row",
+    "case_variants": "Case-variant values",
+}
+
+_STYLE = """
+  :root { --page:#f9f9f7; --surface:#fcfcfb; --ink:#1a1a19; --ink-2:#52514e;
+          --muted:#898781; --grid:#e1e0d9; --accent:#2a78d6;
+          --border:rgba(11,11,11,.12); }
+  @media (prefers-color-scheme: dark) {
+    :root { --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7;
+            --muted:#898781; --grid:#2c2c2a; --accent:#3987e5;
+            --border:rgba(255,255,255,.12); }
+  }
+  body { margin:0; background:var(--page); color:var(--ink);
+         font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+         font-size:15px; line-height:1.55; }
+  main { max-width:820px; margin:0 auto; padding:40px 20px 64px; }
+  h1 { font-size:26px; margin:0 0 6px; }
+  h2 { font-size:19px; margin:36px 0 10px; }
+  .meta { color:var(--muted); font-size:12.5px; margin:0 0 4px; }
+  .meta a { color:var(--accent); }
+  .card { background:var(--surface); border:1px solid var(--border);
+          border-radius:10px; padding:16px 18px; margin:12px 0; }
+  .note { color:var(--ink-2); font-size:13px; }
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th { text-align:left; color:var(--ink-2); font-weight:600;
+       border-bottom:1px solid var(--grid); padding:5px 14px 5px 0; }
+  td { border-bottom:1px solid var(--grid); padding:5px 14px 5px 0;
+       color:var(--ink-2); font-variant-numeric:tabular-nums; }
+  svg { width:100%; height:auto; display:block; }
+  svg .bar { fill:var(--accent); }
+  svg .gridline { stroke:var(--grid); stroke-width:1; }
+  svg .baseline { stroke:var(--muted); stroke-width:1; }
+  svg text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+  svg .tick { font-size:11px; fill:var(--muted); }
+  svg .cat { font-size:12.5px; fill:var(--ink-2); }
+  svg .val { font-size:11.5px; font-weight:600; fill:var(--ink-2); }
+  footer { margin-top:40px; border-top:1px solid var(--grid);
+           padding-top:14px; color:var(--muted); font-size:12.5px; }
+  code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;
+         color:var(--ink-2); }
+"""
+
+
+def _pct(rate: Any) -> str:
+    return "—" if rate is None else f"{rate:.1%}"
+
+
+def _fmt_num(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        if float(value).is_integer():
+            return f"{int(value):,}"
+        return f"{value:,.2f}"
+    return "—" if value is None else _esc(value)
+
+
+def _header_html(model: dict[str, Any]) -> str:
+    meta_bits = [
+        f'<a href="{_esc(model["source_url"])}">'
+        f'{_esc(model["domain"])}/{_esc(model["dataset_id"])}</a>'
+    ]
+    if model["row_count"] is not None:
+        meta_bits.append(f"{model['row_count']:,} rows")
+    span = model.get("date_span")
+    if span:
+        meta_bits.append(
+            f"{_esc(str(span['min'])[:10])} → {_esc(str(span['max'])[:10])} "
+            f"(<code>{_esc(span['field'])}</code>)"
+        )
+    if model["update_frequency"]:
+        meta_bits.append(f"updated {_esc(model['update_frequency'])}")
+    if model["license"]:
+        meta_bits.append(_esc(model["license"]))
+    lines = [
+        f"<h1>{_esc(model['title'])}</h1>",
+        f'<p class="meta">{" · ".join(meta_bits)}</p>',
+    ]
+    if model["attribution"]:
+        lines.append(f'<p class="meta">Source: {_esc(model["attribution"])}</p>')
+    if model["where"]:
+        lines.append(
+            f'<p class="meta">Filter: <code>{_esc(model["where"])}</code></p>'
+        )
+    return "\n".join(lines)
+
+
+def _notes_html(notes: list[str]) -> str:
+    if not notes:
+        return ""
+    items = "".join(f"<li>{_esc(note)}</li>" for note in notes)
+    return (
+        '<div class="card note">'
+        f'<ul style="margin:0;padding-left:18px">{items}</ul></div>'
+    )
+
+
+def _trend_html(model: dict[str, Any]) -> str:
+    trend = model["trend"]
+    width = 4 if trend["granularity"] == "year" else 7
+    points = [(str(p["bucket"])[:width], p["n"]) for p in trend["points"]]
+    svg = column_chart_svg(
+        points, aria_label=f"Row count per {trend['granularity']}"
+    )
+    return (
+        f'<section id="trend"><h2>Rows per {_esc(trend["granularity"])} — '
+        f'<code>{_esc(trend["field"])}</code></h2>'
+        f'<div class="card">{svg}</div></section>'
+    )
+
+
+def _categories_html(model: dict[str, Any]) -> str:
+    blocks = []
+    for cat in model["categories"]:
+        values = [
+            ("(null)" if v["value"] is None else str(v["value"]), v["count"] or 0)
+            for v in cat["values"]
+        ]
+        svg = bar_chart_svg(
+            values, aria_label=f"Top values of {cat['field_name']}"
+        )
+        coverage = ""
+        if cat["coverage"] is not None and cat["coverage"] < 1:
+            coverage = (
+                f'<p class="note">Top {len(values)} values cover '
+                f'{cat["coverage"]:.0%} of non-null rows.</p>'
+            )
+        blocks.append(
+            f'<h2><code>{_esc(cat["field_name"])}</code> — '
+            f'{cat["distinct_count"]} distinct</h2>'
+            f'<div class="card">{svg}{coverage}</div>'
+        )
+    return f'<section id="categories">{"".join(blocks)}</section>'
+
+
+def _numeric_html(model: dict[str, Any]) -> str:
+    rows = "".join(
+        f"<tr><td><code>{_esc(c['field_name'])}</code></td>"
+        f"<td>{_fmt_num(c.get('min'))}</td><td>{_fmt_num(c.get('max'))}</td>"
+        f"<td>{_fmt_num(c.get('avg'))}</td><td>{_pct(c.get('null_rate'))}</td></tr>"
+        for c in model["numeric"]
+    )
+    return (
+        '<section id="numeric"><h2>Numeric columns</h2><div class="card">'
+        "<table><thead><tr><th>Column</th><th>Min</th><th>Max</th><th>Avg</th>"
+        f"<th>Null</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
+    )
+
+
+def _quality_html(model: dict[str, Any]) -> str:
+    quality = model["quality"]
+    parts = ['<section id="quality"><h2>Data quality</h2>']
+    if quality["flags"]:
+        rows = "".join(
+            f"<tr><td><code>{_esc(f['field_name'])}</code></td>"
+            f"<td>{_esc(FLAG_LABELS.get(f['flag'], f['flag']))}</td>"
+            f"<td>{_esc(f['detail'])}</td></tr>"
+            for f in quality["flags"]
+        )
+        parts.append(
+            '<div class="card"><table><thead><tr><th>Column</th><th>Flag</th>'
+            f"<th>Detail</th></tr></thead><tbody>{rows}</tbody></table></div>"
+        )
+    rows = "".join(
+        f"<tr><td><code>{_esc(c['field_name'])}</code></td>"
+        f"<td>{_esc(c.get('type') or '')}</td><td>{_pct(c.get('null_rate'))}</td>"
+        f"<td>{c['distinct_count'] if c.get('distinct_count') is not None else '—'}"
+        "</td></tr>"
+        for c in quality["null_rates"]
+    )
+    parts.append(
+        '<div class="card"><table><thead><tr><th>Column</th><th>Type</th>'
+        f"<th>Null</th><th>Distinct</th></tr></thead><tbody>{rows}</tbody>"
+        "</table></div>"
+    )
+    if quality["profile_notes"]:
+        items = "".join(f"<li>{_esc(n)}</li>" for n in quality["profile_notes"])
+        parts.append(f'<ul class="note">{items}</ul>')
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _footer_html(model: dict[str, Any]) -> str:
+    queries = "".join(f"<li><code>{_esc(q)}</code></li>" for q in model["queries"])
+    query_block = f"<p>Queries run:</p><ul>{queries}</ul>" if queries else ""
+    return (
+        f"<footer>{query_block}"
+        f"<p>Generated {_esc(model['generated_at'])} by socrata-mcp "
+        f"{_esc(model['version'])}. Reflects the dataset as of generation "
+        "time; aggregates computed portal-side.</p></footer>"
+    )
+
+
+_SECTION_RENDERERS = {
+    "trend": _trend_html,
+    "categories": _categories_html,
+    "numeric": _numeric_html,
+    "quality": _quality_html,
+}
+
+
+def render_html(model: dict[str, Any]) -> str:
+    parts = [
+        "<!doctype html>",
+        '<html lang="en"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        f"<title>{_esc(model['title'])}</title>",
+        f"<style>{_STYLE}</style></head><body><main>",
+        _header_html(model),
+        _notes_html(model["notes"]),
+    ]
+    for section in model["sections"]:
+        parts.append(_SECTION_RENDERERS[section](model))
+    parts.append(_footer_html(model))
+    parts.append("</main></body></html>")
+    return "\n".join(part for part in parts if part)
