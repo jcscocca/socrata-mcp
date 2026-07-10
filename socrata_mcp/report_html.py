@@ -26,13 +26,14 @@ def _shorten(text: str, limit: int = MAX_BAR_LABEL_CHARS) -> str:
 def _compact(n: float) -> str:
     n = float(n)
     for div, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
-        if abs(n) >= div:
-            return f"{n / div:.1f}{suffix}".replace(".0", "")
+        value = round(n / div, 1)
+        if abs(value) >= 1:
+            return f"{value:.1f}".removesuffix(".0") + suffix
     return f"{n:,.0f}"
 
 
 def _ticks(max_value: float, count: int = 4) -> list[float]:
-    """Uniform round-number ticks from 0, ending at the first tick >= max."""
+    """Uniform integer ticks from 0, ending at the first tick >= max."""
     if max_value <= 0:
         return [0.0]
     raw = max_value / count
@@ -42,6 +43,7 @@ def _ticks(max_value: float, count: int = 4) -> list[float]:
         step = magnitude * mult
         if step * count >= max_value:
             break
+    step = max(step, 1.0)  # axis carries counts; sub-integer ticks read as noise
     ticks = [step * i for i in range(count + 1)]
     top = next(i for i, tick in enumerate(ticks) if tick >= max_value)
     return ticks[: top + 1]
@@ -80,7 +82,7 @@ def column_chart_svg(points: list[tuple[str, float]], *, aria_label: str) -> str
     n = len(points)
     left, right, top, bottom, height = 56, 16, 20, 32, 280
     plot_w, plot_h = CHART_W - left - right, height - top - bottom
-    ticks = _ticks(max(v for _, v in points))
+    ticks = _ticks(max((v for _, v in points), default=0))
     scale_max = ticks[-1] or 1
 
     def y(v: float) -> float:
@@ -100,10 +102,10 @@ def column_chart_svg(points: list[tuple[str, float]], *, aria_label: str) -> str
             f'<text class="tick" x="{left - 8}" y="{y(tick) + 4:.1f}" '
             f'text-anchor="end">{_compact(tick)}</text>'
         )
-    band = plot_w / n
+    band = plot_w / (n or 1)
     bar_w = min(24.0, band * 0.6)
     label_every = max(1, math.ceil(n / 12))
-    peak_idx = max(range(n), key=lambda i: points[i][1])
+    peak_idx = max(range(n), key=lambda i: points[i][1], default=0)
     for i, (label, value) in enumerate(points):
         cx = left + band * i + band / 2
         parts.append(_rounded_top(cx - bar_w / 2, y(value), bar_w, y(0) - y(value)))

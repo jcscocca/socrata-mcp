@@ -16,6 +16,10 @@ class TestCompact:
         assert _compact(25000) == "25K"
         assert _compact(2654356) == "2.7M"
 
+    def test_unit_promotion_at_rounding_boundary(self):
+        assert _compact(999) == "1K"
+        assert _compact(999950) == "1M"
+
 
 class TestTicks:
     def test_covers_max_with_round_steps(self):
@@ -27,6 +31,10 @@ class TestTicks:
 
     def test_zero_max(self):
         assert _ticks(0) == [0.0]
+
+    def test_small_integer_max_keeps_integer_steps(self):
+        assert _ticks(1) == [0.0, 1.0]
+        assert _ticks(2) == [0.0, 1.0, 2.0]
 
 
 class TestColumnChart:
@@ -43,6 +51,11 @@ class TestColumnChart:
         svg = column_chart_svg(points, aria_label="x")
         assert svg.count('text-anchor="middle"') < 60  # not one label per bar
         ET.fromstring(svg)
+
+    def test_empty_points_render_empty_chart(self):
+        svg = column_chart_svg([], aria_label="empty")
+        ET.fromstring(svg)
+        assert 'class="bar"' not in svg
 
 
 class TestBarChart:
