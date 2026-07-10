@@ -59,10 +59,10 @@ search_datasets("crime", domain="data.seattle.gov")
 get_dataset("data.seattle.gov", "tazs-3rd5")
 profile_dataset("data.seattle.gov", "tazs-3rd5")
 query("data.seattle.gov", "tazs-3rd5",
-      where="offense_start_datetime > '2026-06-10T00:00:00'",
-      order="offense_start_datetime DESC", limit=100)
+      where="offense_date > '2026-06-10T00:00:00'",
+      order="offense_date DESC", limit=100)
 export_csv("data.seattle.gov", "tazs-3rd5", "out/spd_30d.csv",
-           where="offense_start_datetime > '2026-06-10T00:00:00'")
+           where="offense_date > '2026-06-10T00:00:00'")
 # → vizforge: csv_to_dashboard("out/spd_30d.csv", ...)
 ```
 
