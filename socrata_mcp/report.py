@@ -251,7 +251,7 @@ def build_report(
     if quality["null_rates"]:
         sections.append("quality")
 
-    if where:
+    if where and trend is not None:
         notes.append(
             "trend is filtered by `where`; profile-derived sections cover "
             "the full dataset"

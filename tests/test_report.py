@@ -262,3 +262,11 @@ class TestBuildReport:
         assert model["title"] == "Custom"
         assert model["where"] == "occ_date >= '2025-01-01'"
         assert any("filtered by `where`" in n for n in model["notes"])
+
+    def test_where_without_date_column_no_filter_note(self):
+        model = build(
+            trend_rows=None, granularity=None, date_col=None, queries=[],
+            where="occ_date >= '2025-01-01'",
+        )
+        assert not any("filtered by `where`" in n for n in model["notes"])
+        assert any("no usable date column" in n for n in model["notes"])
