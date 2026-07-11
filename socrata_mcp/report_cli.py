@@ -41,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     except (SocrataMCPError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return 130
     for note in result["notes"]:
         print(f"note: {note}", file=sys.stderr)
     print(result["path"])

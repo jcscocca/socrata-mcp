@@ -61,3 +61,10 @@ def test_write_error_exits_nonzero(monkeypatch, capsys):
     code = report_cli.main(["data.example.gov", "abcd-1234", "-o", "/nope/r.html"])
     assert code == 1
     assert "denied" in capsys.readouterr().err
+
+
+def test_keyboard_interrupt_exits_130(monkeypatch, capsys):
+    install(monkeypatch, StubProvider(error=KeyboardInterrupt()))
+    code = report_cli.main(["data.example.gov", "abcd-1234"])
+    assert code == 130
+    assert "interrupted" in capsys.readouterr().err
