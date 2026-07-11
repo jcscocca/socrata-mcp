@@ -433,3 +433,41 @@ class TestTrendCacheCoherence:
         provider.generate_report(DOMAIN, DATASET, tmp_path / "a.html")
         provider.generate_report(DOMAIN, DATASET, tmp_path / "b.html")
         assert len(self._trend_requests(fake_portal)) == 1
+
+
+class TestTrendOutlierTrimming:
+    def _rows(self, pairs):
+        # build_report expects most-recent-first rows
+        return [{"bucket": str(b), "n": str(n)} for b, n in sorted(pairs, reverse=True)]
+
+    def test_leading_sparse_run_trimmed_with_note(self):
+        pairs = [(1900, 1), (1901, 1), (1902, 1)] + [(2020 + i, 1000) for i in range(7)]
+        model = build(trend_rows=self._rows(pairs))
+        buckets = [p["bucket"] for p in model["trend"]["points"]]
+        assert buckets[0] == "2020" and len(buckets) == 7
+        assert any(
+            "trimmed 3 sparse leading buckets" in n and "before 2020" in n
+            for n in model["notes"]
+        )
+
+    def test_short_sparse_run_kept(self):
+        pairs = [(1900, 1), (1901, 1)] + [(2020 + i, 1000) for i in range(7)]
+        model = build(trend_rows=self._rows(pairs))
+        assert len(model["trend"]["points"]) == 9
+        assert not any("trimmed" in n for n in model["notes"])
+
+    def test_trim_capped_by_row_share(self):
+        pairs = [(1900 + i, 4) for i in range(6)] + [(2025, 1000), (2026, 1000)]
+        model = build(trend_rows=self._rows(pairs))
+        assert len(model["trend"]["points"]) == 8
+        assert not any("trimmed" in n for n in model["notes"])
+
+    def test_trailing_sparse_run_trimmed(self):
+        pairs = [(2019 + i, 1000) for i in range(7)] + [(2093, 1), (2094, 1), (2095, 1)]
+        model = build(trend_rows=self._rows(pairs))
+        buckets = [p["bucket"] for p in model["trend"]["points"]]
+        assert buckets[-1] == "2025"
+        assert any(
+            "trimmed 3 sparse trailing buckets" in n and "after 2025" in n
+            for n in model["notes"]
+        )

@@ -68,7 +68,10 @@ Sections, in order. A section that has nothing to show is omitted and noted.
 2. **Trend** — SVG column chart of `count(*)` grouped over the primary date
    column. Granularity: by year (`date_extract_y`) when the span ≥ 1095
    days, else by month (`date_trunc_ym`). Query limit 200 points; if more
-   match, keep the most recent 200 and add a note.
+   match, keep the most recent 200 and add a note. Outlier guard: a run of
+   ≥ 3 near-empty buckets (< 0.5% of the peak) at either end is trimmed —
+   date-entry artifacts like a stray 1900 otherwise stretch the axis — but
+   never more than 1% of plotted rows, and always with a disclosure note.
 3. **Top categories** — up to 3 horizontal-bar SVG charts, one per selected
    categorical column, drawn from the profile's `top_values` (no extra
    queries). Bars show value + count; a residual "everything else" line

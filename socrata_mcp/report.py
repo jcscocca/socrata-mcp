@@ -7,6 +7,7 @@ orchestrates the fetches; report_html.py renders the model.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -14,6 +15,9 @@ from .profile import DATE_TYPES, NUMERIC_TYPES
 
 TREND_YEAR_SPAN_DAYS = 1095  # >= ~3 years -> bucket by year, else by month
 TREND_MAX_POINTS = 200
+TRIM_MIN_RUN = 3  # only trim runs long enough to read as artifacts
+TRIM_SPARSE_PEAK_SHARE = 0.005  # bucket is sparse below 0.5% of the peak
+TRIM_MAX_ROW_SHARE = 0.01  # never trim away more than 1% of plotted rows
 MAX_CATEGORY_SECTIONS = 3
 CATEGORY_MAX_DISTINCT = 50
 MAX_NULL_RATE = 0.5
@@ -168,6 +172,60 @@ def trend_spec(
     )
 
 
+def _trim_sparse_edges(
+    points: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Drop long near-empty runs at either end of the trend.
+
+    Date-entry artifacts (a stray 1900 or 2099) otherwise stretch the axis
+    with decades of empty buckets. The peak bucket always survives, so the
+    result is never empty.
+    """
+    if not points:
+        return points, []
+    total = sum(p["n"] for p in points)
+    peak = max(p["n"] for p in points)
+    threshold = max(1, math.ceil(peak * TRIM_SPARSE_PEAK_SHARE))
+    max_rows = total * TRIM_MAX_ROW_SHARE
+    trims: list[dict[str, Any]] = []
+
+    def sparse_run(seq: Any) -> int:
+        run = 0
+        for point in seq:
+            if point["n"] >= threshold:
+                break
+            run += 1
+        return run
+
+    lead = sparse_run(points)
+    if lead >= TRIM_MIN_RUN:
+        rows = sum(p["n"] for p in points[:lead])
+        if rows <= max_rows:
+            points = points[lead:]
+            trims.append(
+                {
+                    "side": "leading",
+                    "buckets": lead,
+                    "rows": rows,
+                    "boundary": points[0]["bucket"],
+                }
+            )
+    trail = sparse_run(reversed(points))
+    if trail >= TRIM_MIN_RUN:
+        rows = sum(p["n"] for p in points[-trail:])
+        if rows <= max_rows:
+            points = points[:-trail]
+            trims.append(
+                {
+                    "side": "trailing",
+                    "buckets": trail,
+                    "rows": rows,
+                    "boundary": points[-1]["bucket"],
+                }
+            )
+    return points, trims
+
+
 def build_report(
     metadata: dict[str, Any],
     profile: dict[str, Any],
@@ -198,6 +256,16 @@ def build_report(
             if row.get("bucket") is not None and row.get("n") is not None
         ]
         points.reverse()  # query is most-recent-first
+        points, trims = _trim_sparse_edges(points)
+        bucket_width = 4 if granularity == "year" else 7
+        for trim in trims:
+            rel = "before" if trim["side"] == "leading" else "after"
+            boundary = str(trim["boundary"])[:bucket_width]
+            notes.append(
+                f"trimmed {trim['buckets']} sparse {trim['side']} buckets "
+                f"({trim['rows']} rows {rel} {boundary}) — likely "
+                "date-entry artifacts"
+            )
         if trend_truncated:
             notes.append("trend truncated to the most recent buckets returned")
         if points:
