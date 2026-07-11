@@ -12,7 +12,7 @@ from ..config import Config
 from ..errors import PortalError
 from ..export import RAW_EXPORT_DEFAULT_LIMIT, write_csv
 from ..http_client import HttpClient
-from ..profile import profile_columns
+from ..profile import PROFILE_MAX_ATTEMPTS, profile_columns
 from ..report import build_report, describe_query, pick_date_column, trend_spec
 from ..report_html import render_html
 from ..soql import BuiltQuery, build_query
@@ -251,7 +251,11 @@ class SocrataProvider(Provider):
         def compute() -> dict[str, Any]:
             url = self._resource_url(domain, dataset_id)
             columns, notes = profile_columns(
-                lambda params: self.http.get_json(url, params), info["columns"], total
+                lambda params: self.http.get_json(
+                    url, params, max_attempts=PROFILE_MAX_ATTEMPTS
+                ),
+                info["columns"],
+                total,
             )
             return {
                 "domain": domain,

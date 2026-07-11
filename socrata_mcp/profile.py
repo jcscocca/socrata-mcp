@@ -2,8 +2,10 @@
 
 One count(*) for the total, then chunked aggregate selects (null/distinct
 counts, min/max/avg where the type allows), then a GROUP BY top-values query
-per low-cardinality categorical column. A failing chunk is retried column by
-column; a failing column records its portal message instead of aborting.
+per low-cardinality categorical column. Failures fall down a ladder instead
+of retrying: chunk -> one column at a time -> that column without
+count(distinct), the expensive aggregate on large datasets -> its portal
+message recorded instead of aborting.
 """
 
 from __future__ import annotations
@@ -11,6 +13,10 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .errors import PortalError
+
+# The fallback ladder is the retry strategy: a timed-out aggregate is far
+# more likely doomed than transient, so the transport loop gives up early.
+PROFILE_MAX_ATTEMPTS = 2
 
 CHUNK_SIZE = 8
 TOP_VALUES_LIMIT = 10
@@ -42,12 +48,13 @@ def _maybe_int(value: Any) -> int | None:
         return None
 
 
-def _aggregate_parts(column: dict[str, Any], idx: int) -> list[str]:
+def _aggregate_parts(
+    column: dict[str, Any], idx: int, include_distinct: bool = True
+) -> list[str]:
     field, ctype = column["field_name"], column["type"]
-    parts = [
-        f"count({field}) as nn_{idx}",
-        f"count(distinct {field}) as d_{idx}",
-    ]
+    parts = [f"count({field}) as nn_{idx}"]
+    if include_distinct:
+        parts.append(f"count(distinct {field}) as d_{idx}")
     if ctype in NUMERIC_TYPES:
         parts += [
             f"min({field}) as mn_{idx}",
@@ -98,9 +105,13 @@ def profile_columns(
         for _, col in indexed
     }
 
-    def run_chunk(chunk: list[tuple[int, dict[str, Any]]]) -> None:
+    def run_chunk(
+        chunk: list[tuple[int, dict[str, Any]]], include_distinct: bool = True
+    ) -> None:
         select = ", ".join(
-            part for idx, col in chunk for part in _aggregate_parts(col, idx)
+            part
+            for idx, col in chunk
+            for part in _aggregate_parts(col, idx, include_distinct)
         )
         body = fetch({"$select": select})
         row = body[0] if body else {}
@@ -116,7 +127,15 @@ def profile_columns(
                 try:
                     run_chunk([item])
                 except PortalError as exc:
-                    profiles[item[1]["field_name"]]["error"] = exc.portal_message
+                    field = item[1]["field_name"]
+                    try:
+                        run_chunk([item], include_distinct=False)
+                    except PortalError:
+                        profiles[field]["error"] = exc.portal_message
+                    else:
+                        profiles[field]["error"] = (
+                            f"distinct count skipped: {exc.portal_message}"
+                        )
 
     for _, col in indexed:
         stats = profiles[col["field_name"]]

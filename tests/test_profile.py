@@ -128,3 +128,71 @@ def test_profile_is_cached(provider, fake_portal):
     before = len(fake_portal.requests)
     provider.profile_dataset(DOMAIN, DATASET)
     assert len(fake_portal.requests) == before
+
+
+def test_column_failure_degrades_to_no_distinct(provider, fake_portal):
+    fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(100)]
+    fake_portal.stub(
+        lambda p: is_chunk_query(p) and p.get("$select", "").count("count(") > 3,
+        lambda p: httpx.Response(400, json={"error": True, "message": "query too complex"}),
+    )
+    # offense_date keeps failing while count(distinct) is requested...
+    fake_portal.stub(
+        lambda p: is_chunk_query(p) and "offense_date" in p.get("$select", ""),
+        lambda p: httpx.Response(400, json={"error": True, "message": "aggregate timed out"}),
+    )
+    # ...but succeeds without it
+    fake_portal.stub(
+        lambda p: "count(offense_date)" in p.get("$select", "")
+        and "count(distinct" not in p.get("$select", ""),
+        [{"nn_1": "100", "mn_1": "2018-01-01T00:00:00.000",
+          "mx_1": "2026-06-30T00:00:00.000"}],
+    )
+    fake_portal.stub(
+        lambda p: is_chunk_query(p) and "offense_id" in p.get("$select", ""),
+        [{"nn_0": "90", "d_0": "90"}],
+    )
+    fake_portal.stub(
+        lambda p: is_chunk_query(p) and "longitude" in p.get("$select", ""),
+        [{"nn_2": "80", "d_2": "70", "mn_2": "-122.4", "mx_2": "-122.2",
+          "av_2": "-122.3"}],
+    )
+    fake_portal.stub(is_top_values_for("offense_id"), TOP_VALUES)
+
+    profile = provider.profile_dataset(DOMAIN, DATASET)
+    cols = by_field(profile)
+    date = cols["offense_date"]
+    assert date["null_rate"] == 0.0
+    assert date["min"] == "2018-01-01T00:00:00.000"
+    assert "distinct_count" not in date
+    assert "distinct count skipped" in date["error"]
+    assert "aggregate timed out" in date["error"]
+    assert cols["offense_id"]["distinct_count"] == 90
+    assert cols["offense_id"]["top_values"] == [
+        {"value": "THEFT", "count": 60},
+        {"value": "ASSAULT", "count": 30},
+    ]
+
+
+def test_profile_aggregates_fail_fast(fake_portal, config):
+    from socrata_mcp.cache import DiskCache
+    from socrata_mcp.http_client import HttpClient
+    from socrata_mcp.providers.socrata import SocrataProvider
+
+    http = HttpClient(
+        config, transport=httpx.MockTransport(fake_portal.handler),
+        sleep=lambda s: None,
+    )
+    provider = SocrataProvider(config=config, http=http, cache=DiskCache(config.cache_dir))
+    fake_portal.rows[DATASET] = [{"offense_id": str(i)} for i in range(100)]
+    attempts = []
+
+    def unreachable(params):
+        attempts.append(1)
+        raise httpx.ConnectError("simulated timeout")
+
+    fake_portal.stub(is_chunk_query, unreachable)
+    provider.profile_dataset(DOMAIN, DATASET)
+    # 1 chunk probe + 3 per-column probes, two transport attempts each —
+    # the fallback ladder is the retry strategy, not the transport loop
+    assert len(attempts) == 8

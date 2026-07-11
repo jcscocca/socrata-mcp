@@ -143,3 +143,17 @@ def test_throttle_spaces_requests():
     client.get_json("https://data.example.gov/b.json")
     assert len(sleeps) == 1
     assert 0 < sleeps[0] <= 0.5
+
+
+def test_max_attempts_override_limits_retries():
+    attempts = []
+
+    def handler(request):
+        attempts.append(1)
+        raise httpx.ConnectError("boom")
+
+    client = make_client(handler)
+    with pytest.raises(PortalError) as exc_info:
+        client.get_json("https://data.example.gov/x.json", max_attempts=2)
+    assert len(attempts) == 2
+    assert "after 2 attempts" in str(exc_info.value)

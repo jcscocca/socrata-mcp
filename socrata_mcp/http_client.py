@@ -65,10 +65,17 @@ class HttpClient:
         if remaining > 0:
             self.sleep(remaining)
 
-    def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
+    def get_json(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        *,
+        max_attempts: int | None = None,
+    ) -> Any:
+        attempts = max_attempts or MAX_ATTEMPTS
         last_error: str = ""
         last_status: int | None = None
-        for attempt in range(MAX_ATTEMPTS):
+        for attempt in range(attempts):
             self._throttle()
             self._last_request_at = self.clock()
             try:
@@ -97,7 +104,7 @@ class HttpClient:
                 )
             return response.json()
         raise PortalError(
-            f"Giving up after {MAX_ATTEMPTS} attempts: {last_error}",
+            f"Giving up after {attempts} attempts: {last_error}",
             status=last_status,
             url=url,
         )
