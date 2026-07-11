@@ -192,3 +192,51 @@ class TestRenderHtml:
         out = render_html(make_model())
         assert "data updated 2026-07-01" in out
         assert "data updated" not in render_html(make_model(data_updated_at=None))
+
+
+class TestDesignPass:
+    def test_stat_tiles_rendered(self):
+        model = make_model()
+        model["trend"]["delta"] = {"pct": -0.083, "from": "2024", "to": "2025"}
+        model["trend"]["last_partial"] = False
+        out = render_html(model)
+        assert 'class="tiles"' in out
+        assert ">1K<" in out            # row count, compacted
+        assert "2019 → 2026" in out     # date span tile
+        assert "-8.3%" in out           # trend delta, neutral-signed
+        assert "2025 vs 2024" in out
+
+    def test_no_tiles_without_data(self):
+        model = make_model(
+            row_count=None, date_span=None, data_updated_at=None,
+            trend=None, sections=["quality"],
+        )
+        out = render_html(model)
+        assert 'class="tiles"' not in out
+
+    def test_svg_native_tooltips(self):
+        svg = column_chart_svg([("2024", 10), ("2026", 20)], aria_label="x")
+        assert "<title>2024 — 10 rows</title>" in svg
+        svg = bar_chart_svg([("OPEN", 700)], aria_label="x")
+        assert "<title>OPEN — 700 rows</title>" in svg
+
+    def test_partial_last_bucket_marked(self):
+        svg = column_chart_svg(
+            [("2025", 900), ("2026", 100)], aria_label="x", partial_last=True
+        )
+        assert 'class="bar partial"' in svg
+        assert svg.count('class="bar"') == 1  # only the complete bucket
+        assert "(partial)" in svg
+        model = make_model()
+        model["trend"]["last_partial"] = True
+        out = render_html(model)
+        assert "incomplete" in out
+
+    def test_flag_impact_column(self):
+        out = render_html(make_model())
+        assert "<th>Impact</th>" in out
+        assert "Case-sensitive filters" in out
+
+    def test_eyebrow_present(self):
+        out = render_html(make_model())
+        assert 'class="eyebrow"' in out

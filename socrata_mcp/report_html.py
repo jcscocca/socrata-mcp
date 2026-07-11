@@ -49,35 +49,52 @@ def _ticks(max_value: float, count: int = 4) -> list[float]:
     return ticks[: top + 1]
 
 
-def _rounded_top(x: float, y_top: float, w: float, h: float) -> str:
+def _bar_path(d: str, cls: str, tooltip: str | None) -> str:
+    """A bar path, optionally carrying a native browser tooltip (no JS)."""
+    if tooltip:
+        return f'<path class="{cls}" d="{d}"><title>{_esc(tooltip)}</title></path>'
+    return f'<path class="{cls}" d="{d}"/>'
+
+
+def _rounded_top(
+    x: float, y_top: float, w: float, h: float,
+    cls: str = "bar", tooltip: str | None = None,
+) -> str:
     """Column with a 4px rounded data-end, square at the baseline."""
     if h <= 0:
         return ""
     r = min(4.0, h, w / 2)
-    return (
-        f'<path class="bar" d="M{x:.1f},{y_top + h:.1f} L{x:.1f},{y_top + r:.1f} '
+    d = (
+        f"M{x:.1f},{y_top + h:.1f} L{x:.1f},{y_top + r:.1f} "
         f"Q{x:.1f},{y_top:.1f} {x + r:.1f},{y_top:.1f} "
         f"L{x + w - r:.1f},{y_top:.1f} "
         f"Q{x + w:.1f},{y_top:.1f} {x + w:.1f},{y_top + r:.1f} "
-        f'L{x + w:.1f},{y_top + h:.1f} Z"/>'
+        f"L{x + w:.1f},{y_top + h:.1f} Z"
     )
+    return _bar_path(d, cls, tooltip)
 
 
-def _rounded_right(x: float, y: float, w: float, h: float) -> str:
+def _rounded_right(
+    x: float, y: float, w: float, h: float,
+    cls: str = "bar", tooltip: str | None = None,
+) -> str:
     """Horizontal bar with a 4px rounded data-end, square at the baseline."""
     if w <= 0:
         return ""
     r = min(4.0, w, h / 2)
-    return (
-        f'<path class="bar" d="M{x:.1f},{y:.1f} L{x + w - r:.1f},{y:.1f} '
+    d = (
+        f"M{x:.1f},{y:.1f} L{x + w - r:.1f},{y:.1f} "
         f"Q{x + w:.1f},{y:.1f} {x + w:.1f},{y + r:.1f} "
         f"L{x + w:.1f},{y + h - r:.1f} "
         f"Q{x + w:.1f},{y + h:.1f} {x + w - r:.1f},{y + h:.1f} "
-        f'L{x:.1f},{y + h:.1f} Z"/>'
+        f"L{x:.1f},{y + h:.1f} Z"
     )
+    return _bar_path(d, cls, tooltip)
 
 
-def column_chart_svg(points: list[tuple[str, float]], *, aria_label: str) -> str:
+def column_chart_svg(
+    points: list[tuple[str, float]], *, aria_label: str, partial_last: bool = False
+) -> str:
     """Vertical columns: (label, value) per point, first/peak/last labeled."""
     n = len(points)
     left, right, top, bottom, height = 56, 16, 20, 32, 280
@@ -108,7 +125,15 @@ def column_chart_svg(points: list[tuple[str, float]], *, aria_label: str) -> str
     peak_idx = max(range(n), key=lambda i: points[i][1], default=0)
     for i, (label, value) in enumerate(points):
         cx = left + band * i + band / 2
-        parts.append(_rounded_top(cx - bar_w / 2, y(value), bar_w, y(0) - y(value)))
+        is_partial = partial_last and i == n - 1
+        tooltip = f"{label} — {value:,.0f} rows" + (" (partial)" if is_partial else "")
+        parts.append(
+            _rounded_top(
+                cx - bar_w / 2, y(value), bar_w, y(0) - y(value),
+                cls="bar partial" if is_partial else "bar",
+                tooltip=tooltip,
+            )
+        )
         if i % label_every == 0 or i == n - 1:
             parts.append(
                 f'<text class="tick" x="{cx:.1f}" y="{height - 10}" '
@@ -138,7 +163,11 @@ def bar_chart_svg(values: list[tuple[str, float]], *, aria_label: str) -> str:
     for i, (label, value) in enumerate(values):
         yy = top + band * i + (band - bar_h) / 2
         w = plot_w * value / peak
-        parts.append(_rounded_right(left, yy, w, bar_h))
+        parts.append(
+            _rounded_right(
+                left, yy, w, bar_h, tooltip=f"{label} — {value:,.0f} rows"
+            )
+        )
         parts.append(
             f'<text class="cat" x="{left - 10}" y="{yy + bar_h - 4:.1f}" '
             f'text-anchor="end">{_esc(_shorten(str(label)))}</text>'
@@ -158,6 +187,13 @@ FLAG_LABELS = {
     "case_variants": "Case-variant values",
 }
 
+FLAG_IMPACTS = {
+    "mostly_null": "Analyses assuming this column is populated silently drop most rows.",
+    "constant": "Carries no information; filtering or grouping on it is a no-op.",
+    "id_like": "An identifier, not a category — exclude it from grouping and distinct-value analysis.",
+    "case_variants": "Case-sensitive filters and group-bys will split or miss these values.",
+}
+
 _STYLE = """
   :root { --page:#f9f9f7; --surface:#fcfcfb; --ink:#1a1a19; --ink-2:#52514e;
           --muted:#898781; --grid:#e1e0d9; --accent:#2a78d6;
@@ -168,16 +204,28 @@ _STYLE = """
             --border:rgba(255,255,255,.12); }
   }
   body { margin:0; background:var(--page); color:var(--ink);
-         font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+         font-family:"Avenir Next",Avenir,"Segoe UI Variable Text","Segoe UI",
+                     system-ui,-apple-system,sans-serif;
          font-size:15px; line-height:1.55; }
-  main { max-width:820px; margin:0 auto; padding:40px 20px 64px; }
-  h1 { font-size:26px; margin:0 0 6px; }
+  main { max-width:820px; margin:0 auto; padding:44px 20px 64px; }
+  .eyebrow { font-family:ui-monospace,Menlo,Consolas,monospace;
+             font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+             color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:28px; letter-spacing:-.01em; margin:0 0 6px; }
   h2 { font-size:19px; margin:36px 0 10px; }
   .meta { color:var(--muted); font-size:12.5px; margin:0 0 4px; }
   .meta a { color:var(--accent); }
   .card { background:var(--surface); border:1px solid var(--border);
           border-radius:10px; padding:16px 18px; margin:12px 0; }
   .note { color:var(--ink-2); font-size:13px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+           gap:12px; margin:20px 0 4px; }
+  .tile { background:var(--surface); border:1px solid var(--border);
+          border-radius:8px; padding:12px 14px; display:flex;
+          flex-direction:column; gap:2px; }
+  .tile .label { font-size:12px; color:var(--ink-2); }
+  .tile .value { font-size:24px; font-weight:600; line-height:1.2; }
+  .tile .sub { font-size:11.5px; color:var(--muted); }
   table { border-collapse:collapse; width:100%; font-size:13.5px; }
   th { text-align:left; color:var(--ink-2); font-weight:600;
        border-bottom:1px solid var(--grid); padding:5px 14px 5px 0; }
@@ -185,6 +233,7 @@ _STYLE = """
        color:var(--ink-2); font-variant-numeric:tabular-nums; }
   svg { width:100%; height:auto; display:block; }
   svg .bar { fill:var(--accent); }
+  svg .bar.partial { opacity:.45; }
   svg .gridline { stroke:var(--grid); stroke-width:1; }
   svg .baseline { stroke:var(--muted); stroke-width:1; }
   svg text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -230,6 +279,7 @@ def _header_html(model: dict[str, Any]) -> str:
     if model["license"]:
         meta_bits.append(_esc(model["license"]))
     lines = [
+        '<p class="eyebrow">socrata-mcp · dataset report</p>',
         f"<h1>{_esc(model['title'])}</h1>",
         f'<p class="meta">{" · ".join(meta_bits)}</p>',
     ]
@@ -240,6 +290,45 @@ def _header_html(model: dict[str, Any]) -> str:
             f'<p class="meta">Filter: <code>{_esc(model["where"])}</code></p>'
         )
     return "\n".join(lines)
+
+
+def _tiles_html(model: dict[str, Any]) -> str:
+    """Headline stat tiles; deltas carry no valence color — counts aren't goals."""
+    trend = model.get("trend") or {}
+    width = 7 if trend.get("granularity") == "month" else 4
+    tiles: list[tuple[str, str, str]] = []
+    if model["row_count"] is not None:
+        tiles.append(("Rows", _compact(model["row_count"]), ""))
+    span = model.get("date_span")
+    if span:
+        tiles.append(
+            (
+                "Date span",
+                f"{_esc(str(span['min'])[:width])} → {_esc(str(span['max'])[:width])}",
+                f"<code>{_esc(span['field'])}</code>",
+            )
+        )
+    if model["data_updated_at"]:
+        tiles.append(("Data updated", _esc(str(model["data_updated_at"])[:10]), ""))
+    delta = trend.get("delta")
+    if delta:
+        tiles.append(
+            (
+                f"Rows per {_esc(trend['granularity'])}",
+                f"{delta['pct']:+.1%}",
+                f"{_esc(str(delta['to'])[:width])} vs {_esc(str(delta['from'])[:width])}",
+            )
+        )
+    if len(tiles) < 2:
+        return ""
+    cells = "".join(
+        f'<div class="tile"><span class="label">{label}</span>'
+        f'<span class="value">{value}</span>'
+        + (f'<span class="sub">{sub}</span>' if sub else "")
+        + "</div>"
+        for label, value, sub in tiles
+    )
+    return f'<div class="tiles">{cells}</div>'
 
 
 def _notes_html(notes: list[str]) -> str:
@@ -256,13 +345,22 @@ def _trend_html(model: dict[str, Any]) -> str:
     trend = model["trend"]
     width = 4 if trend["granularity"] == "year" else 7
     points = [(str(p["bucket"])[:width], p["n"]) for p in trend["points"]]
+    partial = bool(trend.get("last_partial"))
     svg = column_chart_svg(
-        points, aria_label=f"Row count per {trend['granularity']}"
+        points,
+        aria_label=f"Row count per {trend['granularity']}",
+        partial_last=partial,
     )
+    note = ""
+    if partial:
+        note = (
+            '<p class="note">The last bucket is the current, incomplete '
+            f"{_esc(trend['granularity'])}.</p>"
+        )
     return (
         f'<section id="trend"><h2>Rows per {_esc(trend["granularity"])} — '
         f'<code>{_esc(trend["field"])}</code></h2>'
-        f'<div class="card">{svg}</div></section>'
+        f'<div class="card">{svg}{note}</div></section>'
     )
 
 
@@ -311,12 +409,14 @@ def _quality_html(model: dict[str, Any]) -> str:
         rows = "".join(
             f"<tr><td><code>{_esc(f['field_name'])}</code></td>"
             f"<td>{_esc(FLAG_LABELS.get(f['flag'], f['flag']))}</td>"
-            f"<td>{_esc(f['detail'])}</td></tr>"
+            f"<td>{_esc(f['detail'])}</td>"
+            f"<td>{_esc(FLAG_IMPACTS.get(f['flag'], ''))}</td></tr>"
             for f in quality["flags"]
         )
         parts.append(
             '<div class="card"><table><thead><tr><th>Column</th><th>Flag</th>'
-            f"<th>Detail</th></tr></thead><tbody>{rows}</tbody></table></div>"
+            f"<th>Detail</th><th>Impact</th></tr></thead><tbody>{rows}</tbody>"
+            "</table></div>"
         )
     rows = "".join(
         f"<tr><td><code>{_esc(c['field_name'])}</code></td>"
@@ -364,6 +464,7 @@ def render_html(model: dict[str, Any]) -> str:
         f"<title>{_esc(model['title'])}</title>",
         f"<style>{_STYLE}</style></head><body><main>",
         _header_html(model),
+        _tiles_html(model),
         _notes_html(model["notes"]),
     ]
     for section in model["sections"]:
