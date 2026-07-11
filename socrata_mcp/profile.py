@@ -6,6 +6,11 @@ per low-cardinality categorical column. Failures fall down a ladder instead
 of retrying: chunk -> one column at a time -> that column without
 count(distinct), the expensive aggregate on large datasets -> its portal
 message recorded instead of aborting.
+
+Above PROFILE_DISTINCT_MAX_ROWS rows, count(distinct) is skipped entirely:
+one bounded GROUP BY probe per categorical column yields both the exact
+cardinality (when <= TOP_VALUES_MAX_CARDINALITY) and the top values in a
+single query; other columns report no distinct count on such datasets.
 """
 
 from __future__ import annotations
@@ -17,6 +22,11 @@ from .errors import PortalError
 # The fallback ladder is the retry strategy: a timed-out aggregate is far
 # more likely doomed than transient, so the transport loop gives up early.
 PROFILE_MAX_ATTEMPTS = 2
+
+# count(distinct) needs a full scan-and-hash per column; above this row
+# count it routinely exceeds portal timeouts, so cardinality comes from
+# bounded GROUP BY probes instead.
+PROFILE_DISTINCT_MAX_ROWS = 5_000_000
 
 CHUNK_SIZE = 8
 TOP_VALUES_LIMIT = 10
@@ -99,6 +109,13 @@ def profile_columns(
         )
         eligible = eligible[:MAX_PROFILE_COLUMNS]
 
+    exact_distinct = total <= PROFILE_DISTINCT_MAX_ROWS
+    if not exact_distinct:
+        notes.append(
+            f"large dataset ({total:,} rows): distinct counts come from "
+            "bounded group-by probes on categorical columns only"
+        )
+
     indexed = list(enumerate(eligible))
     profiles: dict[str, dict[str, Any]] = {
         col["field_name"]: {"field_name": col["field_name"], "type": col["type"]}
@@ -121,13 +138,16 @@ def profile_columns(
     for start in range(0, len(indexed), CHUNK_SIZE):
         chunk = indexed[start : start + CHUNK_SIZE]
         try:
-            run_chunk(chunk)
+            run_chunk(chunk, include_distinct=exact_distinct)
         except PortalError:
             for item in chunk:
                 try:
-                    run_chunk([item])
+                    run_chunk([item], include_distinct=exact_distinct)
                 except PortalError as exc:
                     field = item[1]["field_name"]
+                    if not exact_distinct:
+                        profiles[field]["error"] = exc.portal_message
+                        continue
                     try:
                         run_chunk([item], include_distinct=False)
                     except PortalError:
@@ -139,27 +159,38 @@ def profile_columns(
 
     for _, col in indexed:
         stats = profiles[col["field_name"]]
-        distinct = stats.get("distinct_count")
-        if (
-            col["type"] in CATEGORICAL_TYPES
-            and distinct is not None
-            and 0 < distinct <= TOP_VALUES_MAX_CARDINALITY
-        ):
-            field = col["field_name"]
-            try:
-                body = fetch(
-                    {
-                        "$select": f"{field}, count(*) as count",
-                        "$group": field,
-                        "$order": "count DESC",
-                        "$limit": str(TOP_VALUES_LIMIT),
-                    }
-                )
-                stats["top_values"] = [
-                    {"value": row.get(field), "count": _maybe_int(row.get("count"))}
-                    for row in body
-                ]
-            except PortalError as exc:
-                stats["error"] = f"top values unavailable: {exc.portal_message}"
+        if col["type"] not in CATEGORICAL_TYPES:
+            continue
+        if exact_distinct:
+            distinct = stats.get("distinct_count")
+            if distinct is None or not 0 < distinct <= TOP_VALUES_MAX_CARDINALITY:
+                continue
+            limit = TOP_VALUES_LIMIT
+        else:
+            # One probe answers both cardinality and top values.
+            limit = TOP_VALUES_MAX_CARDINALITY + 1
+        field = col["field_name"]
+        try:
+            body = fetch(
+                {
+                    "$select": f"{field}, count(*) as count",
+                    "$group": field,
+                    "$order": "count DESC",
+                    "$limit": str(limit),
+                }
+            )
+        except PortalError as exc:
+            stats["error"] = f"top values unavailable: {exc.portal_message}"
+            continue
+        if not exact_distinct:
+            if len(body) > TOP_VALUES_MAX_CARDINALITY:
+                continue  # cardinality above the cap stays unknown by design
+            stats["distinct_count"] = len(body)
+            if not body:
+                continue
+        stats["top_values"] = [
+            {"value": row.get(field), "count": _maybe_int(row.get("count"))}
+            for row in body[:TOP_VALUES_LIMIT]
+        ]
 
     return [profiles[col["field_name"]] for _, col in indexed], notes

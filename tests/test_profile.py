@@ -196,3 +196,61 @@ def test_profile_aggregates_fail_fast(fake_portal, config):
     # 1 chunk probe + 3 per-column probes, two transport attempts each —
     # the fallback ladder is the retry strategy, not the transport loop
     assert len(attempts) == 8
+
+
+def is_row_count_query(params):
+    return params.get("$select", "").replace(" ", "").startswith("count(*)")
+
+
+def setup_large_portal(fake_portal):
+    """A 6M-row dataset: over the exact-distinct threshold."""
+    fake_portal.rows[DATASET] = [{"offense_id": "x"}]
+    fake_portal.stub(is_row_count_query, [{"count": "6000000"}])
+    fake_portal.stub(
+        lambda p: "count(offense_id)" in p.get("$select", "") and "$group" not in p,
+        [{"nn_0": "5400000", "nn_1": "6000000",
+          "mn_1": "2018-01-01T00:00:00.000", "mx_1": "2026-06-30T00:00:00.000",
+          "nn_2": "4800000", "mn_2": "-122.4", "mx_2": "-122.2", "av_2": "-122.3"}],
+    )
+
+
+def test_large_dataset_probes_instead_of_count_distinct(provider, fake_portal):
+    setup_large_portal(fake_portal)
+    fake_portal.stub(is_top_values_for("offense_id"), TOP_VALUES)
+
+    profile = provider.profile_dataset(DOMAIN, DATASET)
+
+    assert not any(
+        "count(distinct" in params.get("$select", "")
+        for _, params in fake_portal.requests
+    )
+    probes = [p for _, p in fake_portal.requests if p.get("$group") == "offense_id"]
+    assert probes and probes[0]["$limit"] == "501"
+
+    cols = by_field(profile)
+    offense = cols["offense_id"]
+    assert offense["distinct_count"] == 2  # exact: probe returned 2 groups
+    assert offense["null_rate"] == 0.1
+    assert offense["top_values"] == [
+        {"value": "THEFT", "count": 60},
+        {"value": "ASSAULT", "count": 30},
+    ]
+    assert "distinct_count" not in cols["offense_date"]
+    assert cols["offense_date"]["min"] == "2018-01-01T00:00:00.000"
+    assert "distinct_count" not in cols["longitude"]
+    assert cols["longitude"]["avg"] == -122.3
+    assert any("bounded group-by probes" in n for n in profile["notes"])
+
+
+def test_large_dataset_high_cardinality_probe_capped(provider, fake_portal):
+    setup_large_portal(fake_portal)
+    fake_portal.stub(
+        is_top_values_for("offense_id"),
+        [{"offense_id": f"v{i}", "count": "5"} for i in range(501)],
+    )
+
+    profile = provider.profile_dataset(DOMAIN, DATASET)
+    offense = by_field(profile)["offense_id"]
+    assert "distinct_count" not in offense
+    assert "top_values" not in offense
+    assert "error" not in offense  # by-design cap, not a failure

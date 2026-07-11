@@ -132,7 +132,9 @@ def profile_dataset(domain: str, dataset_id: str) -> dict[str, Any]:
 
     Computed portal-side via aggregate SoQL — the dataset is never downloaded.
     Dates and numbers get min/max (numbers also avg); low-cardinality text
-    columns get their top 10 values with counts.
+    columns get their top 10 values with counts. On very large datasets
+    (over ~5M rows) distinct counts are only computed for categorical
+    columns with <= 500 values; other columns omit them (see notes).
 
     Args:
         domain: Portal hostname, e.g. "data.seattle.gov".
