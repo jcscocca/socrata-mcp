@@ -240,3 +240,30 @@ class TestDesignPass:
     def test_eyebrow_present(self):
         out = render_html(make_model())
         assert 'class="eyebrow"' in out
+
+
+class TestEffectiveSpanRendering:
+    def test_effective_span_leads_raw_disclosed(self):
+        model = make_model()
+        model["date_span"]["min"] = "1900-01-01T00:00:00.000"
+        model["date_span"]["effective_min"] = "2007"
+        out = render_html(model)
+        assert "2007 → 2026" in out
+        assert "raw 1900-01-01" in out
+        assert "artifacts trimmed" in out
+
+    def test_raw_span_when_no_trim(self):
+        out = render_html(make_model())
+        assert "2019 → 2026" in out
+        assert "artifacts trimmed" not in out
+
+    def test_date_artifact_flag_row(self):
+        model = make_model()
+        model["quality"]["flags"] = [{
+            "field_name": "occ_date",
+            "flag": "date_artifacts",
+            "detail": "trend edges trimmed: 3 leading buckets (3 rows)",
+        }]
+        out = render_html(model)
+        assert "Date artifacts" in out
+        assert "unreliable" in out

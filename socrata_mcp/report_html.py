@@ -185,6 +185,7 @@ FLAG_LABELS = {
     "constant": "Constant value",
     "id_like": "One value per row",
     "case_variants": "Case-variant values",
+    "date_artifacts": "Date artifacts",
 }
 
 FLAG_IMPACTS = {
@@ -192,6 +193,7 @@ FLAG_IMPACTS = {
     "constant": "Carries no information; filtering or grouping on it is a no-op.",
     "id_like": "An identifier, not a category — exclude it from grouping and distinct-value analysis.",
     "case_variants": "Case-sensitive filters and group-bys will split or miss these values.",
+    "date_artifacts": "Raw min/max dates are unreliable; use the effective span shown above.",
 }
 
 _STYLE = """
@@ -268,9 +270,10 @@ def _header_html(model: dict[str, Any]) -> str:
         meta_bits.append(f"{model['row_count']:,} rows")
     span = model.get("date_span")
     if span:
+        lo = span.get("effective_min") or str(span["min"])[:10]
+        hi = span.get("effective_max") or str(span["max"])[:10]
         meta_bits.append(
-            f"{_esc(str(span['min'])[:10])} → {_esc(str(span['max'])[:10])} "
-            f"(<code>{_esc(span['field'])}</code>)"
+            f"{_esc(lo)} → {_esc(hi)} (<code>{_esc(span['field'])}</code>)"
         )
     if model["update_frequency"]:
         meta_bits.append(f"updated {_esc(model['update_frequency'])}")
@@ -301,13 +304,16 @@ def _tiles_html(model: dict[str, Any]) -> str:
         tiles.append(("Rows", _compact(model["row_count"]), ""))
     span = model.get("date_span")
     if span:
-        tiles.append(
-            (
-                "Date span",
-                f"{_esc(str(span['min'])[:width])} → {_esc(str(span['max'])[:width])}",
-                f"<code>{_esc(span['field'])}</code>",
+        trimmed = "effective_min" in span or "effective_max" in span
+        lo = span.get("effective_min") or str(span["min"])[:width]
+        hi = span.get("effective_max") or str(span["max"])[:width]
+        sub = f"<code>{_esc(span['field'])}</code>"
+        if trimmed:
+            sub = (
+                f"raw {_esc(str(span['min'])[:10])} → "
+                f"{_esc(str(span['max'])[:10])} · artifacts trimmed"
             )
-        )
+        tiles.append(("Date span", f"{_esc(lo)} → {_esc(hi)}", sub))
     if model["data_updated_at"]:
         tiles.append(("Data updated", _esc(str(model["data_updated_at"])[:10]), ""))
     delta = trend.get("delta")

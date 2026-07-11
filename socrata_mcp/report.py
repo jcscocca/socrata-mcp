@@ -274,6 +274,8 @@ def build_report(
     sections: list[str] = []
 
     trend = None
+    effective_span: dict[str, Any] = {}
+    date_flags: list[dict[str, Any]] = []
     if date_col is None:
         notes.append("no usable date column; trend section skipped")
     elif trend_rows is not None:
@@ -292,6 +294,26 @@ def build_report(
                 f"trimmed {trim['buckets']} sparse {trim['side']} buckets "
                 f"({trim['rows']} rows {rel} {boundary}) — likely "
                 "date-entry artifacts"
+            )
+        if trims and not where:
+            # The raw min/max are artifact-skewed; record the span the
+            # surviving buckets support, and flag the column.
+            lead = next((t for t in trims if t["side"] == "leading"), None)
+            trail = next((t for t in trims if t["side"] == "trailing"), None)
+            if lead:
+                effective_span["effective_min"] = str(lead["boundary"])[:bucket_width]
+            if trail:
+                effective_span["effective_max"] = str(trail["boundary"])[:bucket_width]
+            summary = "; ".join(
+                f"{t['buckets']} {t['side']} buckets ({t['rows']} rows)"
+                for t in trims
+            )
+            date_flags.append(
+                {
+                    "field_name": date_col["field_name"],
+                    "flag": "date_artifacts",
+                    "detail": f"trend edges trimmed: {summary}",
+                }
             )
         if trend_truncated:
             notes.append("trend truncated to the most recent buckets returned")
@@ -345,7 +367,7 @@ def build_report(
             ),
             key=lambda c: -(c["null_rate"] or 0),
         ),
-        "flags": find_landmines(columns, row_count),
+        "flags": find_landmines(columns, row_count) + date_flags,
         "profile_notes": list(profile.get("notes") or [])
         + [f"{c['field_name']}: {c['error']}" for c in columns if c.get("error")],
     }
@@ -364,6 +386,7 @@ def build_report(
             "field": date_col["field_name"],
             "min": date_col.get("min"),
             "max": date_col.get("max"),
+            **effective_span,
         }
 
     return {

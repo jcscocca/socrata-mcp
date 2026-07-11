@@ -510,3 +510,34 @@ class TestTrendDeltaAndPartial:
         rows = [{"bucket": "2025", "n": "900"}, {"bucket": "2024", "n": "0"}]
         model = build(trend_rows=rows)
         assert model["trend"]["delta"] is None
+
+
+class TestEffectiveDateSpan:
+    def _rows(self, pairs):
+        return [{"bucket": str(b), "n": str(n)} for b, n in sorted(pairs, reverse=True)]
+
+    def test_trim_sets_effective_span_and_flag(self):
+        pairs = [(1900, 1), (1901, 1), (1902, 1)] + [(2020 + i, 1000) for i in range(7)]
+        model = build(trend_rows=self._rows(pairs))
+        assert model["date_span"]["effective_min"] == "2020"
+        assert "effective_max" not in model["date_span"]
+        flags = model["quality"]["flags"]
+        assert any(
+            f["flag"] == "date_artifacts" and f["field_name"] == "occ_date"
+            for f in flags
+        )
+
+    def test_no_effective_span_without_trim(self):
+        model = build()
+        assert "effective_min" not in model["date_span"]
+        assert not any(
+            f["flag"] == "date_artifacts" for f in model["quality"]["flags"]
+        )
+
+    def test_no_effective_span_under_where_filter(self):
+        pairs = [(1900, 1), (1901, 1), (1902, 1)] + [(2020 + i, 1000) for i in range(7)]
+        model = build(trend_rows=self._rows(pairs), where="occ_date >= '1900-01-01'")
+        assert "effective_min" not in model["date_span"]
+        assert not any(
+            f["flag"] == "date_artifacts" for f in model["quality"]["flags"]
+        )
