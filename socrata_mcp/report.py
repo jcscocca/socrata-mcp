@@ -226,6 +226,33 @@ def _trim_sparse_edges(
     return points, trims
 
 
+def _is_partial_bucket(
+    bucket: Any, granularity: str | None, data_updated_at: Any
+) -> bool:
+    """The last bucket is incomplete when it covers the period being written."""
+    if not data_updated_at:
+        return False
+    width = 4 if granularity == "year" else 7
+    return str(bucket)[:width] == str(data_updated_at)[:width]
+
+
+def _trend_delta(
+    points: list[dict[str, Any]], last_partial: bool
+) -> dict[str, Any] | None:
+    """Change between the last two complete buckets, as a signed fraction."""
+    complete = points[:-1] if last_partial else points
+    if len(complete) < 2:
+        return None
+    prev, last = complete[-2], complete[-1]
+    if not prev["n"]:
+        return None
+    return {
+        "pct": round((last["n"] - prev["n"]) / prev["n"], 4),
+        "from": prev["bucket"],
+        "to": last["bucket"],
+    }
+
+
 def build_report(
     metadata: dict[str, Any],
     profile: dict[str, Any],
@@ -269,10 +296,15 @@ def build_report(
         if trend_truncated:
             notes.append("trend truncated to the most recent buckets returned")
         if points:
+            last_partial = _is_partial_bucket(
+                points[-1]["bucket"], granularity, metadata.get("data_updated_at")
+            )
             trend = {
                 "field": date_col["field_name"],
                 "granularity": granularity,
                 "points": points,
+                "last_partial": last_partial,
+                "delta": _trend_delta(points, last_partial),
             }
             sections.append("trend")
         else:

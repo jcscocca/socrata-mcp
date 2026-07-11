@@ -471,3 +471,42 @@ class TestTrendOutlierTrimming:
             "trimmed 3 sparse trailing buckets" in n and "after 2025" in n
             for n in model["notes"]
         )
+
+
+class TestTrendDeltaAndPartial:
+    def test_delta_between_last_two_complete_buckets(self):
+        rows = [{"bucket": str(b), "n": str(n)} for b, n in
+                [(2025, 900), (2024, 1000), (2023, 800)]]
+        model = build(trend_rows=rows)  # data_updated_at is 2026: no partial
+        trend = model["trend"]
+        assert trend["last_partial"] is False
+        assert trend["delta"] == {"pct": -0.1, "from": "2024", "to": "2025"}
+
+    def test_partial_last_bucket_excluded_from_delta(self):
+        rows = [{"bucket": str(b), "n": str(n)} for b, n in
+                [(2026, 100), (2025, 900), (2024, 1000)]]
+        model = build(trend_rows=rows)  # data_updated_at 2026-07-01 -> partial
+        trend = model["trend"]
+        assert trend["last_partial"] is True
+        assert trend["delta"] == {"pct": -0.1, "from": "2024", "to": "2025"}
+
+    def test_month_granularity_partial_detection(self):
+        rows = [
+            {"bucket": "2026-07-01T00:00:00.000", "n": "10"},
+            {"bucket": "2026-06-01T00:00:00.000", "n": "500"},
+            {"bucket": "2026-05-01T00:00:00.000", "n": "400"},
+        ]
+        model = build(trend_rows=rows, granularity="month")
+        trend = model["trend"]
+        assert trend["last_partial"] is True
+        assert trend["delta"]["pct"] == 0.25
+
+    def test_no_delta_when_too_few_complete_buckets(self):
+        rows = [{"bucket": "2026", "n": "100"}, {"bucket": "2025", "n": "900"}]
+        model = build(trend_rows=rows)  # 2026 partial -> one complete bucket
+        assert model["trend"]["delta"] is None
+
+    def test_no_delta_when_prior_bucket_is_zero_rows(self):
+        rows = [{"bucket": "2025", "n": "900"}, {"bucket": "2024", "n": "0"}]
+        model = build(trend_rows=rows)
+        assert model["trend"]["delta"] is None
